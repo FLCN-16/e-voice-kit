@@ -1,0 +1,175 @@
+defmodule VoiceGateway.Endpoint do
+  @moduledoc """
+  HTTP and WebSocket router for incoming carrier webhooks and media streams.
+
+  Powered by Plug and Bandit.
+  """
+
+  use Plug.Router
+  require Logger
+
+  plug(CORSPlug, origin: ["*"])
+  plug(:match)
+
+  # Support both JSON and URL-encoded form data (required for Twilio webhooks)
+  plug(Plug.Parsers,
+    parsers: [:urlencoded, :json],
+    pass: ["*/*"],
+    json_decoder: Jason
+  )
+
+  plug(:dispatch)
+
+  # Health Check Endpoint
+  get "/health" do
+    active_calls = VoiceGateway.active_calls_count()
+
+    response = %{
+      "status" => "healthy",
+      "active_calls" => active_calls,
+      "timestamp" => System.system_time(:second)
+    }
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
+
+  # Inbound Twilio Media Stream WebSocket
+  # Timeout set to :infinity so telephony calls are not dropped during holds or long silences
+  get "/media/twilio" do
+    conn
+    |> WebSockAdapter.upgrade(VoiceGateway.Transports.TwilioWebSocket, [], timeout: :infinity)
+    |> halt()
+  end
+
+  # Inbound Telnyx Media Stream WebSocket
+  get "/media/telnyx" do
+    conn
+    |> WebSockAdapter.upgrade(VoiceGateway.Transports.TelnyxWebSocket, [], timeout: :infinity)
+    |> halt()
+  end
+
+  # Inbound Vonage Media Stream WebSocket
+  get "/media/vonage" do
+    conn
+    |> WebSockAdapter.upgrade(VoiceGateway.Transports.VonageWebSocket, [], timeout: :infinity)
+    |> halt()
+  end
+
+  # Webhook to return TwiML for Twilio inbound phone calls
+  post "/twiml" do
+    host = conn.host
+    proto = if conn.scheme == :https, do: "wss", else: "ws"
+    stream_url = "#{proto}://#{host}:#{conn.port}/media/twilio"
+
+    to_number = conn.params["To"] || ""
+    from_number = conn.params["From"] || ""
+    tenant_id = conn.params["tenant_id"] || ""
+    assistant_id = conn.params["assistant_id"] || ""
+
+    stream_params =
+      [
+        {"caller_number", from_number},
+        {"dialed_number", to_number},
+        {"tenant_id", tenant_id},
+        {"assistant_id", assistant_id}
+      ]
+      |> Enum.reject(fn {_k, v} -> v == "" end)
+      |> Enum.map(fn {k, v} -> ~s(      <Parameter name="#{k}" value="#{v}" />\n) end)
+      |> Enum.join()
+
+    twiml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+      <Connect>
+        <Stream url="#{stream_url}">
+    #{stream_params}    </Stream>
+      </Connect>
+    </Response>
+    """
+
+    conn
+    |> put_resp_content_type("application/xml")
+    |> send_resp(200, twiml)
+  end
+
+  # Dynamic Call Reconfiguration Endpoint
+  post "/calls/:call_id/reconfigure" do
+    case VoiceGateway.reconfigure_call(call_id, conn.body_params) do
+      :ok ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(%{"status" => "reconfigured", "call_id" => call_id}))
+
+      {:error, :not_found} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(404, Jason.encode!(%{"error" => "call_not_found"}))
+
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(400, Jason.encode!(%{"error" => to_string(reason)}))
+    end
+  end
+
+  # Twilio Call Status Callback Webhook
+  post "/webhooks/twilio/status" do
+    call_sid = conn.params["CallSid"] || ""
+    call_status = conn.params["CallStatus"] || ""
+    duration = conn.params["CallDuration"] || conn.params["Duration"]
+
+    Logger.info("[Twilio:Webhook] Call #{call_sid} status: #{call_status}, duration: #{duration}s")
+    canonical_status = VoiceGateway.Providers.Events.normalize_webhook_status(conn.params)
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{"received" => true, "status" => to_string(canonical_status)}))
+  end
+
+  # Twilio Call Recording Callback Webhook
+  post "/webhooks/twilio/recording" do
+    call_sid = conn.params["CallSid"] || ""
+    recording_url = conn.params["RecordingUrl"] || ""
+    duration = conn.params["RecordingDuration"] || ""
+
+    Logger.info("[Twilio:Webhook] Call #{call_sid} recording ready: #{recording_url} (#{duration}s)")
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{"received" => true, "recording_url" => recording_url}))
+  end
+
+  # Telnyx Call Control Webhook
+  post "/webhooks/telnyx/events" do
+    data = conn.body_params["data"] || conn.params
+    event_type = get_in(data, ["event_type"]) || conn.params["event_type"]
+    call_id = get_in(data, ["payload", "call_control_id"]) || conn.params["call_control_id"]
+
+    Logger.info("[Telnyx:Webhook] Event: #{event_type}, CallControlId: #{call_id}")
+    canonical_status = VoiceGateway.Providers.Events.normalize_webhook_status(%{"event_type" => event_type})
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{"received" => true, "canonical_event" => to_string(canonical_status)}))
+  end
+
+  # Vonage Voice Webhook
+  post "/webhooks/vonage/events" do
+    uuid = conn.params["uuid"] || ""
+    status = conn.params["status"] || ""
+
+    Logger.info("[Vonage:Webhook] Call #{uuid} status: #{status}")
+    canonical_status = VoiceGateway.Providers.Events.normalize_webhook_status(conn.params)
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(%{"received" => true, "status" => to_string(canonical_status)}))
+  end
+
+  # Fallback 404
+  match _ do
+    send_resp(conn, 404, "Not Found")
+  end
+end
