@@ -3,7 +3,6 @@ import Config
 if config_env() == :prod or System.get_env("PORT") do
   port = String.to_integer(System.get_env("PORT") || "4000")
   config :e_voice_kit, port: port
-  config :voice_gateway, port: port
 end
 
 app_config = [
@@ -80,6 +79,3 @@ app_config = [
 
 # Set primary config for :e_voice_kit
 config :e_voice_kit, app_config
-
-# Set backwards compatibility alias for :voice_gateway
-config :voice_gateway, app_config

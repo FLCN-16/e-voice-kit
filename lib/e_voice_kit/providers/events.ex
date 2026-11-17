@@ -114,43 +114,50 @@ defmodule EVoiceKit.Providers.Events do
   """
   @spec normalize_webhook_status(term()) :: webhook_status_event()
   def normalize_webhook_status(params) when is_map(params) do
-    # Twilio CallStatus / Telnyx event_type / Vonage status
-    status =
-      params["CallStatus"] ||
-        params["event_type"] ||
-        params["status"] ||
-        params["status_code"] ||
-        ""
-
-    case String.downcase(to_string(status)) do
-      s when s in ["initiated", "queued", "call.initiated"] ->
-        :call_initiated
-
-      s when s in ["ringing", "call.ringing"] ->
-        :call_ringing
-
-      s when s in ["in-progress", "answered", "call.answered"] ->
-        :call_answered
-
-      s when s in ["completed", "call.hangup", "hangup"] ->
-        :call_completed
-
-      s when s in ["busy", "call.busy"] ->
-        :call_busy
-
-      s when s in ["no-answer", "no_answer", "call.no_answer"] ->
-        :call_no_answer
-
-      s when s in ["failed", "canceled", "cancelled", "call.failed"] ->
-        :call_failed
-
-      s when s in ["recording_ready", "recording_saved", "call.recording.saved"] ->
+    cond do
+      params["RecordingUrl"] || params["recording_url"] ->
         url = params["RecordingUrl"] || params["recording_url"] || ""
         duration = parse_duration(params["RecordingDuration"] || params["duration"])
         {:recording_ready, url, duration}
 
-      _ ->
-        :ignore
+      true ->
+        status =
+          params["CallStatus"] ||
+            params["event_type"] ||
+            params["status"] ||
+            params["status_code"] ||
+            ""
+
+        case String.downcase(to_string(status)) do
+          s when s in ["initiated", "queued", "call.initiated"] ->
+            :call_initiated
+
+          s when s in ["ringing", "call.ringing"] ->
+            :call_ringing
+
+          s when s in ["in-progress", "answered", "call.answered"] ->
+            :call_answered
+
+          s when s in ["completed", "call.hangup", "hangup"] ->
+            :call_completed
+
+          s when s in ["busy", "call.busy"] ->
+            :call_busy
+
+          s when s in ["no-answer", "no_answer", "call.no_answer"] ->
+            :call_no_answer
+
+          s when s in ["failed", "canceled", "cancelled", "call.failed"] ->
+            :call_failed
+
+          s when s in ["recording_ready", "recording_saved", "call.recording.saved"] ->
+            url = params["RecordingUrl"] || params["recording_url"] || ""
+            duration = parse_duration(params["RecordingDuration"] || params["duration"])
+            {:recording_ready, url, duration}
+
+          _ ->
+            :ignore
+        end
     end
   end
 

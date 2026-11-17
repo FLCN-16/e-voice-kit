@@ -121,9 +121,11 @@ defmodule EVoiceKit.Transports.SIP.Message do
       "f" -> "From"
       "t" -> "To"
       "i" -> "Call-ID"
+      "call-id" -> "Call-ID"
       "m" -> "Contact"
       "l" -> "Content-Length"
       "c" -> "Content-Type"
+      "content-type" -> "Content-Type"
       _ ->
         name
         |> String.split("-")
