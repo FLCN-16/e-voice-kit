@@ -1,6 +1,6 @@
 import Config
 
-config :voice_gateway,
+config :e_voice_kit,
   port: 4000,
   brain_bridge_url: "ws://localhost:3000/voice-bridge",
   default_stt_provider: :deepgram,

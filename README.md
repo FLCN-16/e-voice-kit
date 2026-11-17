@@ -1,8 +1,8 @@
-# VoiceGateway (Elixir / BEAM)
+# E-Voice-Kit (Elixir / BEAM)
 
 The ultra-low-latency, 100% pure Elixir real-time Voice AI platform.
 
-Built on the Erlang BEAM virtual machine, VoiceGateway delivers sub-800ms turn latency, sub-50ms barge-in interruptions, and handles tens of thousands of concurrent telephone calls on a single node.
+Built on the Erlang BEAM virtual machine, E-Voice-Kit delivers sub-800ms turn latency, sub-50ms barge-in interruptions, and handles tens of thousands of concurrent telephone calls on a single node.
 
 It can run as a **completely self-contained, standalone Voice AI agent** (with built-in streaming LLM inference, sentence chunking, tool calling, and speech processing) or connect to an external microservice backend via duplex WebSocket IPC.
 
@@ -10,7 +10,7 @@ It can run as a **completely self-contained, standalone Voice AI agent** (with b
 
 ## Supported Providers
 
-### 1. Conversational LLMs (`VoiceGateway.LLM.Agent`)
+### 1. Conversational LLMs (`EVoiceKit.LLM.Agent`)
 * **Groq** (`:groq`): Ultra-low-latency Llama-3.3-70B inference (~150ms TTFT).
 * **Cerebras** (`:cerebras`): High-speed Llama-3.1-8B/70B inference.
 * **OpenAI** (`:openai`): GPT-4o and GPT-4o-mini with streaming function calling.
@@ -36,20 +36,21 @@ It can run as a **completely self-contained, standalone Voice AI agent** (with b
 ## Architecture Overview
 
 ```
-Telephony (Twilio / Telnyx / SIP)
+Telephony (Twilio / Telnyx / Vonage / SIP)
           │  (WebSocket G.711 μ-law)
           ▼
-   VoiceGateway.Endpoint
+    EVoiceKit.Endpoint
           │
           ▼
-VoiceGateway.Transports.TwilioWebSocket / TelnyxWebSocket
+EVoiceKit.Transports.TwilioWebSocket / TelnyxWebSocket / VonageWebSocket
           │
           ▼ (dynamic spawn per call)
-VoiceGateway.Pipeline.Session (GenServer per live call)
+EVoiceKit.Pipeline.Session (GenServer per live call)
     ├── Clients.STTStreamer (Pluggable STT Dispatcher)
     │     ├── Clients.DeepgramSTT
     │     ├── Clients.AssemblyAISTT
-    │     └── Clients.SarvamSTT
+    │     ├── Clients.SarvamSTT
+    │     └── Clients.WhisperSTT
     ├── LLM.Agent (Built-in Pure Elixir Conversational Brain)
     │     ├── Task (Finch HTTP/2 SSE Streaming)
     │     ├── LLM.SentenceChunker (Clause & Sentence Tokenizer)
@@ -58,19 +59,20 @@ VoiceGateway.Pipeline.Session (GenServer per live call)
     │     ├── Clients.Cartesia
     │     ├── Clients.ElevenLabsTTS
     │     ├── Clients.FishAudioTTS
-    │     └── Clients.SarvamTTS
+    │     ├── Clients.SarvamTTS
+    │     └── Clients.OpenAITTS
     └── Clients.BrainBridge (Optional Duplex IPC for external backends)
 ```
 
 ### Key Modules:
-* **`VoiceGateway.Codec.G711`**: Native Elixir binary pattern-matching decoder/encoder for 8kHz μ-law (PCMU) to 16-bit linear PCM. Zero external C dependencies.
-* **`VoiceGateway.Pipeline.Session`**: State machine managing turn boundaries, conversational fillers, and sub-50ms barge-in interruptions.
-* **`VoiceGateway.Pipeline.Buffer`**: Frame packetizer for 20ms (160-byte) audio streaming with instant flush capabilities.
-* **`VoiceGateway.Transports.TwilioWebSocket`**: Inbound WebSocket handler compatible with Twilio Media Streams.
-* **`VoiceGateway.Transports.TelnyxWebSocket`**: Inbound WebSocket handler compatible with Telnyx Media Streams.
-* **`VoiceGateway.Clients.BrainBridge`**: Duplex WebSocket bridge communicating with the NestJS LangChain Agent.
-
-> For the complete Knowledge Base (RAG) specification, see [**`KNOWLEDGE_BASE_INTEGRATION.md`**](file:///c:/Users/RishabhKumar/Work/openring-main/KNOWLEDGE_BASE_INTEGRATION.md).
+* **`EVoiceKit.Codec.G711`**: Native Elixir binary pattern-matching decoder/encoder for 8kHz μ-law (PCMU) to 16-bit linear PCM. Zero external C dependencies.
+* **`EVoiceKit.Pipeline.Session`**: State machine managing turn boundaries, conversational fillers, and sub-50ms barge-in interruptions.
+* **`EVoiceKit.Pipeline.Buffer`**: Frame packetizer for 20ms (160-byte) audio streaming with instant flush capabilities.
+* **`EVoiceKit.Transports.TwilioWebSocket`**: Inbound WebSocket handler compatible with Twilio Media Streams.
+* **`EVoiceKit.Transports.TelnyxWebSocket`**: Inbound WebSocket handler compatible with Telnyx Media Streams.
+* **`EVoiceKit.Transports.VonageWebSocket`**: Inbound WebSocket handler compatible with Vonage Voice WebSockets.
+* **`EVoiceKit.Transports.SIPCarrier`**: SIP/RTP trunk handler for private PBX / carrier BYO trunks.
+* **`EVoiceKit.Clients.BrainBridge`**: Duplex WebSocket bridge communicating with external LangChain / NestJS agents.
 
 ---
 
@@ -96,8 +98,8 @@ cp .env.example .env
 
 Set your default providers:
 ```env
-DEFAULT_STT_PROVIDER=deepgram    # deepgram | assemblyai | sarvam
-DEFAULT_TTS_PROVIDER=elevenlabs  # elevenlabs | cartesia | fishaudio | sarvam
+DEFAULT_STT_PROVIDER=deepgram    # deepgram | assemblyai | sarvam | whisper
+DEFAULT_TTS_PROVIDER=elevenlabs  # elevenlabs | cartesia | fishaudio | sarvam | openai
 ```
 
 ### Running Locally
@@ -135,15 +137,20 @@ This returns the TwiML to establish a bi-directional media stream to `wss://your
 
 ## Running with Docker
 ```bash
-docker build -t voice_gateway .
-docker run -p 4000:4000 --env-file .env voice_gateway
+docker build -t e_voice_kit .
+docker run -p 4000:4000 --env-file .env e_voice_kit
+```
+
+Or using Docker Compose:
+```bash
+docker compose up -d
 ```
 
 ---
 
 ## Dynamic On-the-Go Reconfiguration (Per-Call & Mid-Call Hot Swap)
 
-VoiceGateway supports dynamically configuring or changing STT/TTS providers, models, languages, and voices at any time **without dropping the call**.
+E-Voice-Kit supports dynamically configuring or changing STT/TTS providers, models, languages, and voices at any time **without dropping the call**.
 
 ### 1. Per-Call Configuration at Ingress (Twilio / Telnyx)
 Specify call-specific providers directly in your TwiML `<Parameter>` tags:
@@ -160,8 +167,8 @@ Specify call-specific providers directly in your TwiML `<Parameter>` tags:
 </Response>
 ```
 
-### 2. Mid-Call Hot-Swap via NestJS Brain Bridge
-When a caller requests a language or persona change (e.g. *"Can you speak in Hindi?"*), the NestJS agent emits an in-band WebSocket reconfigure event:
+### 2. Mid-Call Hot-Swap via External Brain Bridge
+When a caller requests a language or persona change (e.g. *"Can you speak in Hindi?"*), the agent emits an in-band WebSocket reconfigure event:
 ```json
 {
   "event": "reconfigure",
@@ -186,7 +193,7 @@ curl -X POST http://localhost:4000/calls/MZ12345/reconfigure \
 
 ### 4. Programmatic Elixir API
 ```elixir
-VoiceGateway.reconfigure_call("call_stream_id", %{
+EVoiceKit.reconfigure_call("call_stream_id", %{
   "tts_provider" => "fishaudio",
   "model_id" => "s2.1-pro"
 })
@@ -196,9 +203,9 @@ VoiceGateway.reconfigure_call("call_stream_id", %{
 
 ## Multi-Tenant Ingress & Agent Routing
 
-VoiceGateway resolves multi-tenancy and assistant configuration across all channels:
+E-Voice-Kit resolves multi-tenancy and assistant configuration across all channels:
 
-1. **Telephony Ingress (Twilio / Telnyx):**
+1. **Telephony Ingress (Twilio / Telnyx / Vonage):**
    * Uses Dialed Number Identification Service (DNIS): `To` dialed phone number maps to tenant and assistant in PostgreSQL.
    * `POST /twiml` injects `tenant_id` and `assistant_id` as `<Parameter>` tags into the media stream.
 
@@ -208,9 +215,9 @@ VoiceGateway resolves multi-tenancy and assistant configuration across all chann
 3. **Web / In-App Browser Calls:**
    * Ephemeral signed JWT tokens passed via query string: `wss://gateway.domain.com/media/web?token=eyJhbGci...`.
 
-4. **NestJS Brain Bridge Handshake:**
+4. **External Brain Bridge Handshake:**
    * Elixir opens `/voice-bridge?tenant_id=...&assistant_id=...&call_id=...`.
-   * NestJS returns the assistant's system prompt, tools, voice provider, and greeting in the initial handshake payload.
+   * The brain returns the assistant's system prompt, tools, voice provider, and greeting in the initial handshake payload.
 
 ---
 
@@ -218,14 +225,13 @@ VoiceGateway resolves multi-tenancy and assistant configuration across all chann
 
 Comprehensive guides are available in the [`docs/`](docs/) directory:
 
-* [**Pluggable Carrier Transports & Base Class**](docs/carrier-transports.md): How to use `VoiceGateway.Transports.WebSocketCarrier` to implement new carriers (Twilio, Telnyx, Vonage, SIP) in minutes.
+* [**Pluggable Carrier Transports & Base Class**](docs/carrier-transports.md): How to use `EVoiceKit.Transports.WebSocketCarrier` to implement new carriers (Twilio, Telnyx, Vonage, SIP) in minutes.
 * [**Native Pure Elixir LLM Agent**](docs/native-llm-agent.md): In-depth guide to the pure Elixir LLM engine, sentence chunking, fillers, and tool execution.
 * [**System Overview**](docs/overview.md): High-level feature set and why Elixir on BEAM is ideal for voice AI.
 * [**Architecture & Supervision**](docs/architecture.md): Deep dive into OTP supervision trees, GenServer lifecycle, and fault isolation.
-* [**Pluggable Providers Guide**](docs/pluggable-providers.md): Specification for the `VoiceGateway.Providers.STT` and `VoiceGateway.Providers.TTS` behaviours and how to author custom providers.
-* [**Telephony Setup Guide**](docs/telephony-setup.md): Step-by-step guides for connecting Twilio, Telnyx, and direct SIP/RTP trunks.
+* [**Pluggable Providers Guide**](docs/pluggable-providers.md): Specification for the `EVoiceKit.Providers.STT` and `EVoiceKit.Providers.TTS` base macros and behaviours.
+* [**Telephony Setup Guide**](docs/telephony-setup.md): Step-by-step guides for connecting Twilio, Telnyx, Vonage, and direct SIP/RTP trunks.
 * [**Dynamic Reconfiguration**](docs/dynamic-reconfiguration.md): Guide to hot-swapping voices, models, and languages on the fly without dropping calls.
-* [**Knowledge Base Integration Guide**](../KNOWLEDGE_BASE_INTEGRATION.md): RAG design with `pgvector` HNSW search and conversational fillers.
 
 ---
 
@@ -237,4 +243,4 @@ We welcome contributions from the open-source community! Please see our [**Contr
 
 ## 📄 License
 
-VoiceGateway is open-source software licensed under the [**MIT License**](LICENSE).
+E-Voice-Kit is open-source software licensed under the [**MIT License**](LICENSE).

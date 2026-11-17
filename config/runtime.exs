@@ -2,10 +2,10 @@ import Config
 
 if config_env() == :prod or System.get_env("PORT") do
   port = String.to_integer(System.get_env("PORT") || "4000")
-  config :voice_gateway, port: port
+  config :e_voice_kit, port: port
 end
 
-config :voice_gateway,
+app_config = [
   # 1. Pipeline Defaults
   default_stt_provider: String.to_atom(System.get_env("DEFAULT_STT_PROVIDER", "deepgram")),
   default_tts_provider: String.to_atom(System.get_env("DEFAULT_TTS_PROVIDER", "elevenlabs")),
@@ -75,3 +75,7 @@ config :voice_gateway,
   sarvam_tts_model: System.get_env("SARVAM_TTS_MODEL", "bulbul:v2"),
   sarvam_tts_language: System.get_env("SARVAM_TTS_LANGUAGE", "hi-IN"),
   sarvam_tts_speaker: System.get_env("SARVAM_TTS_SPEAKER", "meera")
+]
+
+# Set primary config for :e_voice_kit
+config :e_voice_kit, app_config
