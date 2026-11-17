@@ -29,7 +29,7 @@ defmodule EVoiceKit.LLM.SentenceChunker do
   """
   def push(%__MODULE__{} = chunker, token) when is_binary(token) do
     new_buf = chunker.buffer <> token
-    min_len = if chunker.first_chunk_sent, do: chunker.min_subsequent_chars, do: chunker.min_first_chunk_chars
+    min_len = if chunker.first_chunk_sent, do: chunker.min_subsequent_chars, else: chunker.min_first_chunk_chars
 
     case find_split_point(new_buf, min_len) do
       {:split, phrase, rest} ->

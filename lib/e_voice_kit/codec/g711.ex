@@ -6,7 +6,7 @@ defmodule EVoiceKit.Codec.G711 do
   Replaces the deprecated Python `audioop` module with zero external C dependencies.
   """
 
-  use Bitwise
+  import Bitwise
 
   @bias 0x84
   @clip 32635

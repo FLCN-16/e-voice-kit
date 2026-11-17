@@ -65,8 +65,10 @@ defmodule EVoiceKit.Clients.TTSStreamer do
   @doc """
   Streams a text token or phrase to the active TTS client.
   """
-  @spec stream_text(client_handle(), binary(), boolean()) :: :ok
-  def stream_text({module, pid}, text, continue? \\ true) when is_binary(text) and is_pid(pid) do
+  @spec stream_text(client_handle() | pid(), binary(), boolean()) :: :ok
+  def stream_text(target, text, continue? \\ true)
+
+  def stream_text({module, pid}, text, continue?) when is_binary(text) and is_pid(pid) do
     if Process.alive?(pid) do
       module.stream_text(pid, text, continue?)
     else
