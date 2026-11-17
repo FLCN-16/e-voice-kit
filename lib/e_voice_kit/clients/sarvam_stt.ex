@@ -21,6 +21,7 @@ defmodule EVoiceKit.Clients.SarvamSTT do
   @doc """
   Starts a Sarvam AI STT streaming client for an active call.
   """
+  @impl EVoiceKit.Providers.STT
   def start_link(session_pid, call_id, opts \\ []) do
     api_key = opts[:api_key] || Application.get_env(:e_voice_kit, :sarvam_api_key)
     language_code = opts[:language_code] || Application.get_env(:e_voice_kit, :sarvam_stt_language, "hi-IN")
@@ -56,6 +57,7 @@ defmodule EVoiceKit.Clients.SarvamSTT do
   @doc """
   Streams a chunk of telephony μ-law audio to Sarvam AI (decoded to 16-bit linear PCM).
   """
+  @impl EVoiceKit.Providers.STT
   def send_audio(pid, mulaw_chunk) when is_binary(mulaw_chunk) do
     pcm_audio = G711.decode_mulaw(mulaw_chunk)
     WebSockex.send_frame(pid, {:binary, pcm_audio})
@@ -64,6 +66,7 @@ defmodule EVoiceKit.Clients.SarvamSTT do
   @doc """
   Closes the streaming STT connection.
   """
+  @impl EVoiceKit.Providers.STT
   def close(pid) do
     WebSockex.send_frame(pid, {:text, Jason.encode!(%{"type" => "flush"})})
   end

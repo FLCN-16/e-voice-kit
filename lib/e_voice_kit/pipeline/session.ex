@@ -358,18 +358,18 @@ defmodule EVoiceKit.Pipeline.Session do
     {:noreply, state}
   end
 
-  # Dynamic Call Reconfiguration (API / GenServer.call)
-  @impl true
-  def handle_call({:reconfigure, new_config}, _from, state) do
-    updated_state = apply_reconfiguration(state, new_config)
-    {:reply, :ok, updated_state}
-  end
-
   # Dynamic Call Reconfiguration (Brain Signal from NestJS)
   @impl true
   def handle_info({:brain_reconfigure, new_config}, state) do
     updated_state = apply_reconfiguration(state, new_config)
     {:noreply, updated_state}
+  end
+
+  # Dynamic Call Reconfiguration (API / GenServer.call)
+  @impl true
+  def handle_call({:reconfigure, new_config}, _from, state) do
+    updated_state = apply_reconfiguration(state, new_config)
+    {:reply, :ok, updated_state}
   end
 
   @impl true

@@ -23,6 +23,7 @@ defmodule EVoiceKit.Clients.AssemblyAISTT do
   @doc """
   Starts an AssemblyAI streaming STT WebSocket client for an active call.
   """
+  @impl EVoiceKit.Providers.STT
   def start_link(session_pid, call_id, opts \\ []) do
     api_key = opts[:api_key] || Application.get_env(:e_voice_kit, :assemblyai_api_key)
 
@@ -47,6 +48,7 @@ defmodule EVoiceKit.Clients.AssemblyAISTT do
   @doc """
   Streams a chunk of telephony μ-law audio to AssemblyAI (automatically transcoded to linear PCM).
   """
+  @impl EVoiceKit.Providers.STT
   def send_audio(pid, mulaw_chunk) when is_binary(mulaw_chunk) do
     # AssemblyAI expects 16-bit signed little-endian linear PCM
     pcm_audio = G711.decode_mulaw(mulaw_chunk)
@@ -56,6 +58,7 @@ defmodule EVoiceKit.Clients.AssemblyAISTT do
   @doc """
   Signals the end of speech stream to AssemblyAI.
   """
+  @impl EVoiceKit.Providers.STT
   def close(pid) do
     terminate_payload = %{"terminate_session" => true}
     WebSockex.send_frame(pid, {:text, Jason.encode!(terminate_payload)})

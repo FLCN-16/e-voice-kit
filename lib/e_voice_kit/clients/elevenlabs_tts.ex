@@ -29,6 +29,7 @@ defmodule EVoiceKit.Clients.ElevenLabsTTS do
   @doc """
   Starts an ElevenLabs streaming TTS WebSocket client for an active call.
   """
+  @impl EVoiceKit.Providers.TTS
   def start_link(session_pid, call_id, opts \\ []) do
     api_key = opts[:api_key] || Application.get_env(:e_voice_kit, :elevenlabs_api_key)
     voice_id = opts[:voice_id] || Application.get_env(:e_voice_kit, :elevenlabs_voice_id, @default_voice_id)
@@ -66,6 +67,7 @@ defmodule EVoiceKit.Clients.ElevenLabsTTS do
   @doc """
   Streams a text token or phrase to ElevenLabs.
   """
+  @impl EVoiceKit.Providers.TTS
   def stream_text(pid, text, continue? \\ true) when is_binary(text) do
     WebSockex.cast(pid, {:stream_text, text, continue?})
   end
@@ -73,6 +75,7 @@ defmodule EVoiceKit.Clients.ElevenLabsTTS do
   @doc """
   Sends an instant abort signal to stop active ElevenLabs generation on barge-in.
   """
+  @impl EVoiceKit.Providers.TTS
   def abort(pid) do
     WebSockex.cast(pid, :abort_generation)
   end

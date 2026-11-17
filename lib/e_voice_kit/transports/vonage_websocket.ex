@@ -13,7 +13,7 @@ defmodule EVoiceKit.Transports.VonageWebSocket do
 
   @impl EVoiceKit.Providers.Carrier
   def parse_start_event(%{"event" => "websocket:connected"} = msg, state) do
-    call_id = msg["uuid"] || UUID.uuid4()
+    call_id = msg["uuid"] || generate_call_id()
 
     session_opts = [
       call_id: call_id,
@@ -49,8 +49,12 @@ defmodule EVoiceKit.Transports.VonageWebSocket do
   end
 
   @impl EVoiceKit.Providers.Carrier
-  def encode_clear_frame(_state) do
+  def encode_clear_frame(state) do
     payload = %{"event" => "clear"}
-    {:reply, {:text, Jason.encode!(payload)}, _state}
+    {:reply, {:text, Jason.encode!(payload)}, state}
+  end
+
+  defp generate_call_id do
+    "vonage_" <> (:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower))
   end
 end

@@ -18,7 +18,7 @@ defmodule EVoiceKit.Transports.SIP.Message do
     [header_part, body] =
       case :binary.split(packet, "\r\n\r\n") do
         [h, b] -> [h, b]
-        [h] ->
+        [_h] ->
           case :binary.split(packet, "\n\n") do
             [h2, b2] -> [h2, b2]
             [h2] -> [h2, ""]

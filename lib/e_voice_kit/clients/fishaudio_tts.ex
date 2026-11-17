@@ -27,6 +27,7 @@ defmodule EVoiceKit.Clients.FishAudioTTS do
   @doc """
   Starts a Fish Audio TTS client for an active call.
   """
+  @impl EVoiceKit.Providers.TTS
   def start_link(session_pid, call_id, opts \\ []) do
     GenServer.start_link(__MODULE__, {session_pid, call_id, opts})
   end
@@ -34,6 +35,7 @@ defmodule EVoiceKit.Clients.FishAudioTTS do
   @doc """
   Streams a text token or phrase to Fish Audio for synthesis.
   """
+  @impl EVoiceKit.Providers.TTS
   def stream_text(pid, text, continue? \\ true) when is_binary(text) do
     GenServer.cast(pid, {:stream_text, text, continue?})
   end
@@ -41,6 +43,7 @@ defmodule EVoiceKit.Clients.FishAudioTTS do
   @doc """
   Aborts active Fish Audio synthesis on caller barge-in.
   """
+  @impl EVoiceKit.Providers.TTS
   def abort(pid) do
     GenServer.cast(pid, :abort_generation)
   end

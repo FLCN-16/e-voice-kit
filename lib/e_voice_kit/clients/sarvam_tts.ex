@@ -27,6 +27,7 @@ defmodule EVoiceKit.Clients.SarvamTTS do
   @doc """
   Starts a Sarvam AI TTS streaming client for an active call.
   """
+  @impl EVoiceKit.Providers.TTS
   def start_link(session_pid, call_id, opts \\ []) do
     api_key = opts[:api_key] || Application.get_env(:e_voice_kit, :sarvam_api_key)
     language_code = opts[:language_code] || Application.get_env(:e_voice_kit, :sarvam_tts_language, @default_language)
@@ -58,6 +59,7 @@ defmodule EVoiceKit.Clients.SarvamTTS do
   @doc """
   Streams a text token or phrase to Sarvam Bulbul.
   """
+  @impl EVoiceKit.Providers.TTS
   def stream_text(pid, text, continue? \\ true) when is_binary(text) do
     WebSockex.cast(pid, {:stream_text, text, continue?})
   end
@@ -65,6 +67,7 @@ defmodule EVoiceKit.Clients.SarvamTTS do
   @doc """
   Aborts active Sarvam generation on barge-in.
   """
+  @impl EVoiceKit.Providers.TTS
   def abort(pid) do
     WebSockex.cast(pid, :abort_generation)
   end

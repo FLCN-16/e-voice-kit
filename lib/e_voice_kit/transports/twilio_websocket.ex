@@ -88,7 +88,6 @@ defmodule EVoiceKit.Transports.TwilioWebSocket do
   end
 
   # Handle Twilio connected event
-  @impl true
   def handle_custom_in(%{"event" => "connected"}, state) do
     Logger.debug("[Twilio] Telephony stream connected")
     {:ok, state}

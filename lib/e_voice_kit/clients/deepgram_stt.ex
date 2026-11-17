@@ -20,6 +20,7 @@ defmodule EVoiceKit.Clients.DeepgramSTT do
   @doc """
   Starts a new Deepgram streaming STT connection for a call.
   """
+  @impl EVoiceKit.Providers.STT
   def start_link(session_pid, call_id, opts \\ []) do
     api_key = opts[:api_key] || Application.get_env(:e_voice_kit, :deepgram_api_key)
 
@@ -55,6 +56,7 @@ defmodule EVoiceKit.Clients.DeepgramSTT do
   @doc """
   Streams a chunk of raw μ-law audio to Deepgram.
   """
+  @impl EVoiceKit.Providers.STT
   def send_audio(pid, chunk) when is_binary(chunk) do
     WebSockex.send_frame(pid, {:binary, chunk})
   end
@@ -62,6 +64,7 @@ defmodule EVoiceKit.Clients.DeepgramSTT do
   @doc """
   Closes the STT stream cleanly.
   """
+  @impl EVoiceKit.Providers.STT
   def close(pid) do
     # Tell Deepgram stream is closing
     WebSockex.send_frame(pid, {:text, Jason.encode!(%{"type" => "CloseStream"})})

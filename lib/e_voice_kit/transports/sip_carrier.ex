@@ -179,7 +179,7 @@ defmodule EVoiceKit.Transports.SIPCarrier do
 
   @impl EVoiceKit.Providers.Carrier
   def parse_start_event(sip_invite_message, state) do
-    call_id = Map.get(sip_invite_message.headers, "Call-ID", UUID.uuid4())
+    call_id = Map.get(sip_invite_message.headers, "Call-ID") || generate_call_id()
 
     case Message.parse_sdp_audio(sip_invite_message.body) do
       {:ok, remote_ip, remote_port} ->
@@ -212,7 +212,7 @@ defmodule EVoiceKit.Transports.SIPCarrier do
   end
 
   @impl EVoiceKit.Providers.Carrier
-  def encode_clear_frame(state), do: :ignore
+  def encode_clear_frame(_state), do: :ignore
 
   @impl EVoiceKit.Providers.Carrier
   def encode_hangup_frame(state) do
@@ -271,4 +271,8 @@ defmodule EVoiceKit.Transports.SIPCarrier do
   end
 
   defp parse_ip_address(tuple) when is_tuple(tuple), do: tuple
+
+  defp generate_call_id do
+    "sip_" <> (:crypto.strong_rand_bytes(12) |> Base.encode16(case: :lower))
+  end
 end
