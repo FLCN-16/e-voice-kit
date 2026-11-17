@@ -1,9 +1,9 @@
 services:
-  voice_gateway:
+  e_voice_kit:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: voice_gateway
+    container_name: e_voice_kit
     restart: unless-stopped
     env_file:
       - .env
@@ -21,7 +21,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: voice_gateway_postgres
+    container_name: e_voice_kit_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: voice_ai

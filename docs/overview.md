@@ -1,8 +1,8 @@
-# VoiceGateway Overview
+# E-Voice-Kit Overview
 
-VoiceGateway is an open-source, ultra-low-latency real-time voice edge built in Elixir on the Erlang VM (BEAM).
+E-Voice-Kit is an open-source, ultra-low-latency real-time voice edge built in Elixir on the Erlang VM (BEAM).
 
-It powers conversational voice AI applications by bridging telephony carriers (Twilio, Telnyx, SIP) directly to streaming speech APIs (Deepgram, AssemblyAI, Sarvam, ElevenLabs, Cartesia, Fish Audio) and AI agent backends.
+It powers conversational voice AI applications by bridging telephony carriers (Twilio, Telnyx, Vonage, SIP) directly to streaming speech APIs (Deepgram, AssemblyAI, Sarvam, Whisper, ElevenLabs, Cartesia, Fish Audio, OpenAI) and native or external AI agent backends.
 
 ---
 
@@ -20,8 +20,9 @@ It powers conversational voice AI applications by bridging telephony carriers (T
 
 ## 📦 What's in the Box?
 
-* **Pluggable Speech Engine:** Built-in support for Deepgram, AssemblyAI, Sarvam AI, ElevenLabs, Cartesia, and Fish Audio.
-* **Carrier Integrations:** Twilio Media Streams, Telnyx Media Streams, and direct SIP/RTP trunking.
+* **Pluggable Speech Engine:** Built-in support for Deepgram, AssemblyAI, Sarvam AI, Whisper, ElevenLabs, Cartesia, Fish Audio, and OpenAI.
+* **Carrier Integrations:** Twilio Media Streams, Telnyx Media Streams, Vonage Voice WebSockets, and direct SIP/RTP trunking.
 * **Barge-in / Turn Detection:** Sub-50ms acoustic interruption handling with immediate audio buffer clearing.
 * **Multi-Tenancy:** Inbound DNIS dialed-number routing, SIP headers, and ephemeral JWT tokens for browser widgets.
 * **Hot-Swapping on the Fly:** Switch speech models, languages (English $\leftrightarrow$ Hindi), and voices mid-call without dropping the line.
+* **Native Pure Elixir Brain:** Built-in streaming LLM inference with Groq, Cerebras, OpenAI, Anthropic, DeepSeek, and Ollama.

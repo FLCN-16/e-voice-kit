@@ -1,8 +1,8 @@
-# Contributing to VoiceGateway
+# Contributing to E-Voice-Kit
 
-First off, thank you for considering contributing to VoiceGateway! 🎉
+First off, thank you for considering contributing to E-Voice-Kit! 🎉
 
-VoiceGateway is an open-source, ultra-low-latency real-time voice edge built in Elixir on the BEAM. Our mission is to provide the fastest, most reliable, and easiest-to-self-host voice AI platform in the world.
+E-Voice-Kit is an open-source, ultra-low-latency real-time voice edge built in Elixir on the BEAM. Our mission is to provide the fastest, most reliable, and easiest-to-self-host voice AI platform in the world.
 
 ---
 
@@ -15,8 +15,8 @@ VoiceGateway is an open-source, ultra-low-latency real-time voice edge built in 
 ### Local Setup
 ```bash
 # 1. Clone the repository
-git clone https://github.com/your-org/voice-gateway.git
-cd voice-gateway/elixir
+git clone https://github.com/FLCN-16/e-voice-kit.git
+cd e-voice-kit
 
 # 2. Install dependencies
 mix deps.get
@@ -37,42 +37,48 @@ The server will start on `http://localhost:4000`.
 
 ## 🔌 Authoring a New Pluggable Provider
 
-VoiceGateway features a modular, pluggable architecture. Anyone can contribute a new Speech-to-Text (STT) or Text-to-Speech (TTS) provider in under 100 lines of Elixir.
+E-Voice-Kit features a modular, pluggable architecture. Anyone can contribute a new Speech-to-Text (STT), Text-to-Speech (TTS), or Telephony Carrier provider in under 100 lines of Elixir using our base macros and canonical event normalizer.
 
 ### Adding an STT Provider
-1. Create a module under `lib/voice_gateway/clients/my_provider_stt.ex`.
-2. Adopt the `@behaviour VoiceGateway.Providers.STT`.
-3. Implement `start_link/3`, `send_audio/2`, and `close/1`:
+1. Create a module under `lib/e_voice_kit/clients/my_provider_stt.ex`.
+2. Adopt `use EVoiceKit.Providers.STT` or `@behaviour EVoiceKit.Providers.STT`.
+3. Implement `init_stream/3`, `handle_carrier_audio/2`, and `handle_stream_message/2`:
 
 ```elixir
-defmodule VoiceGateway.Clients.MyProviderSTT do
-  @behaviour VoiceGateway.Providers.STT
-  use WebSockex
+defmodule EVoiceKit.Clients.MyProviderSTT do
+  use EVoiceKit.Providers.STT, audio_format: :pcm_16
 
-  @impl VoiceGateway.Providers.STT
-  def start_link(session_pid, call_id, opts) do
+  @impl EVoiceKit.Providers.STT
+  def init_stream(session_pid, call_id, opts) do
     # Open WebSocket to speech provider
+    {:ok, %{session_pid: session_pid, call_id: call_id}}
   end
 
-  @impl VoiceGateway.Providers.STT
-  def send_audio(pid, mulaw_chunk) do
-    # Stream audio frame
-  end
+  @impl EVoiceKit.Providers.STT
+  def handle_stream_message({:text, json_str}, state) do
+    case Jason.decode(json_str) do
+      {:ok, %{"transcript" => text, "is_final" => true}} ->
+        {:transcript, text, state}
 
-  @impl VoiceGateway.Providers.STT
-  def close(pid) do
-    # Disconnect cleanly
+      _ ->
+        {:noreply, state}
+    end
   end
 end
 ```
 
-4. Register your provider in `config/config.exs` or `lib/voice_gateway/clients/stt_streamer.ex`.
+4. Register your provider in `config/config.exs` or dynamically via `config :e_voice_kit, :stt_providers, %{my_provider: EVoiceKit.Clients.MyProviderSTT}`.
 
 ### Adding a TTS Provider
-1. Create a module under `lib/voice_gateway/clients/my_provider_tts.ex`.
-2. Adopt the `@behaviour VoiceGateway.Providers.TTS`.
-3. Implement `start_link/3`, `stream_text/3`, and `abort/1`.
-4. Ensure barge-in (`abort/1`) cancels in-flight synthesis in $< 50\text{ ms}$.
+1. Create a module under `lib/e_voice_kit/clients/my_provider_tts.ex`.
+2. Adopt `use EVoiceKit.Providers.TTS, audio_format: :mulaw`.
+3. Implement `init_stream/3`, `handle_synthesize_text/3`, and `handle_stream_message/2`.
+4. Ensure barge-in cancels in-flight synthesis in $< 50\text{ ms}$.
+
+### Adding a Carrier Transport
+1. Create a module under `lib/e_voice_kit/transports/my_carrier_websocket.ex`.
+2. Adopt `use EVoiceKit.Transports.WebSocketCarrier`.
+3. Implement `parse_incoming_event/2` and `encode_outgoing_audio/3`.
 
 ---
 
@@ -81,7 +87,7 @@ end
 * **Formatting:** Run `mix format` before committing.
 * **OTP Idioms:**
   * Keep GenServer callbacks light and non-blocking.
-  * Use supervised tasks (`VoiceGateway.TaskSupervisor`) for async operations.
+  * Use supervised tasks (`EVoiceKit.TaskSupervisor`) for async operations.
   * Use native binary pattern matching for binary/audio transformations.
 * **Documentation:** All public functions should have `@doc` and `@spec` type annotations.
 
@@ -108,5 +114,5 @@ end
 
 ## 💬 Community & Help
 Have questions or want to discuss architecture?
-* Open a [GitHub Discussion](https://github.com/your-org/voice-gateway/discussions)
-* Open an [Issue](https://github.com/your-org/voice-gateway/issues) for bug reports and feature requests.
+* Open a [GitHub Discussion](https://github.com/FLCN-16/e-voice-kit/discussions)
+* Open an [Issue](https://github.com/FLCN-16/e-voice-kit/issues) for bug reports and feature requests.

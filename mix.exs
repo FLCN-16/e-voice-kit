@@ -1,12 +1,22 @@
-defmodule VoiceGateway.MixProject do
+defmodule EVoiceKit.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :voice_gateway,
+      app: :e_voice_kit,
       version: "0.1.0",
       elixir: "~> 1.15",
+      name: "E-Voice-Kit",
+      source_url: "https://github.com/FLCN-16/e-voice-kit",
+      homepage_url: "https://github.com/FLCN-16/e-voice-kit",
+      description: "E-Voice-Kit: Ultra-low-latency, real-time Voice AI edge gateway for telephony and pluggable STT/TTS",
       start_permanent: Mix.env() == :prod,
+      releases: [
+        e_voice_kit: [
+          include_executables_for: [:unix],
+          applications: [runtime_tools: :permanent]
+        ]
+      ],
       deps: deps()
     ]
   end
@@ -14,13 +24,13 @@ defmodule VoiceGateway.MixProject do
   def application do
     [
       extra_applications: [:logger, :crypto],
-      mod: {VoiceGateway.Application, []}
+      mod: {EVoiceKit.Application, []}
     ]
   end
 
   defp deps do
     [
-      # Modern, high-performance HTTP & WebSocket server (latest release)
+      # Modern, high-performance HTTP & WebSocket server (Bandit)
       {:bandit, "~> 1.14"},
       # WebSocket adapter for Plug / Bandit
       {:websock_adapter, "~> 0.7"},

@@ -1,6 +1,6 @@
 # Telephony Setup Guide
 
-VoiceGateway connects directly to enterprise phone carriers via WebSockets and SIP.
+E-Voice-Kit connects directly to enterprise phone carriers via WebSockets and SIP.
 
 ---
 
@@ -13,7 +13,7 @@ VoiceGateway connects directly to enterprise phone carriers via WebSockets and S
    * **Webhook:** `POST https://your-domain.com/twiml`
 
 ### What Happens:
-When a phone call rings, VoiceGateway responds with TwiML:
+When a phone call rings, E-Voice-Kit responds with TwiML:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -25,7 +25,7 @@ When a phone call rings, VoiceGateway responds with TwiML:
   </Connect>
 </Response>
 ```
-Twilio opens a bi-directional WebSocket streaming raw 8kHz G.711 μ-law audio to [`VoiceGateway.Transports.TwilioWebSocket`](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/lib/voice_gateway/transports/twilio_websocket.ex).
+Twilio opens a bi-directional WebSocket streaming raw 8kHz G.711 μ-law audio to [`EVoiceKit.Transports.TwilioWebSocket`](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/lib/e_voice_kit/transports/twilio_websocket.ex).
 
 ---
 
@@ -40,7 +40,16 @@ Twilio opens a bi-directional WebSocket streaming raw 8kHz G.711 μ-law audio to
 
 ---
 
-## 3. Direct SIP / BYO-Trunk (RFC 3261)
+## 3. Vonage Voice WebSockets
+
+### Portal Configuration
+1. Log into the [Vonage Developer Dashboard](https://dashboard.nexmo.com/).
+2. Set your NCCO to connect to `wss://your-domain.com/media/vonage`.
+3. Set status callback webhooks to `https://your-domain.com/webhooks/vonage/events`.
+
+---
+
+## 4. Direct SIP / BYO-Trunk (RFC 3261)
 
 For on-premises PBXs (Asterisk, FreeSWITCH, Cisco CUCM):
 * **SIP Port:** `5060/udp`

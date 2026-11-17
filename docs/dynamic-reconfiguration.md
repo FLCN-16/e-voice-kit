@@ -1,6 +1,6 @@
 # Dynamic On-the-Go Reconfiguration
 
-VoiceGateway allows hot-swapping STT/TTS providers, speech models, languages, and voice personas at any time **without dropping the live phone call**.
+E-Voice-Kit allows hot-swapping STT/TTS providers, speech models, languages, and voice personas at any time **without dropping the live phone call**.
 
 ---
 
@@ -59,7 +59,7 @@ curl -X POST http://localhost:4000/calls/call_stream_id/reconfigure \
 ## 4. Programmatic Elixir API
 
 ```elixir
-VoiceGateway.reconfigure_call("call_stream_id", %{
+EVoiceKit.reconfigure_call("call_stream_id", %{
   "tts_provider" => "fishaudio",
   "model_id" => "s2.1-pro"
 })

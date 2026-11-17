@@ -38,8 +38,8 @@ WORKDIR /app
 ENV MIX_ENV=prod
 ENV PORT=4000
 
-COPY --from=build /app/_build/prod/rel/voice_gateway ./
+COPY --from=build /app/_build/prod/rel/e_voice_kit ./
 
 EXPOSE 4000
 
-CMD ["bin/voice_gateway", "start"]
+CMD ["bin/e_voice_kit", "start"]
