@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.CarrierTest do
+defmodule EVoiceKit.Transports.CarrierTest do
   use ExUnit.Case, async: true
 
   alias EVoiceKit.Transports.{TwilioWebSocket, TelnyxWebSocket, VonageWebSocket}

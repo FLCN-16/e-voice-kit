@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.OpenAITTS do
+defmodule EVoiceKit.Clients.OpenAITTS do
   @moduledoc """
   Streaming TTS client for OpenAI Realtime Speech synthesis endpoints.
 

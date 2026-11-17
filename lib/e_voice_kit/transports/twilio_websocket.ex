@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.TwilioWebSocket do
+defmodule EVoiceKit.Transports.TwilioWebSocket do
   @moduledoc """
   WebSock handler for inbound Twilio Media Streams, implemented using `EVoiceKit.Transports.WebSocketCarrier`.
   """

@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.ToolsTest do
+defmodule EVoiceKit.LLM.ToolsTest do
   use ExUnit.Case, async: true
   alias EVoiceKit.LLM.Tools
 

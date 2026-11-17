@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.ProviderMacroTest do
+defmodule EVoiceKit.Providers.ProviderMacroTest do
   use ExUnit.Case, async: true
 
   alias EVoiceKit.Clients.{WhisperSTT, OpenAITTS}

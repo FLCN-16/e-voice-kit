@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Pipeline.SessionTest do
+defmodule EVoiceKit.Pipeline.SessionTest do
   use ExUnit.Case, async: true
   alias EVoiceKit.Pipeline.{Buffer, Session}
 

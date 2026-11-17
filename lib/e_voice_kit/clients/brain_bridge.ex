@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.BrainBridge do
+defmodule EVoiceKit.Clients.BrainBridge do
   @moduledoc """
   Duplex IPC WebSocket client connecting Elixir Voice Gateway to the NestJS Cognitive Brain.
 

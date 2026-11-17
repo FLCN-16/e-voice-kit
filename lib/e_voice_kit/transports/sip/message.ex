@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.SIP.Message do
+defmodule EVoiceKit.Transports.SIP.Message do
   @moduledoc """
   High-performance binary pattern matching parser and serializer for SIP messages (RFC 3261).
   """

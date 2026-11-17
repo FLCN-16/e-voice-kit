@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.TelnyxWebSocket do
+defmodule EVoiceKit.Transports.TelnyxWebSocket do
   @moduledoc """
   WebSock handler for inbound Telnyx Media Streaming, implemented using `EVoiceKit.Transports.WebSocketCarrier`.
   """

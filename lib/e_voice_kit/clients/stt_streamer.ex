@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.STTStreamer do
+defmodule EVoiceKit.Clients.STTStreamer do
   @moduledoc """
   Unified, pluggable STT client and provider dispatcher for real-time speech-to-text.
 

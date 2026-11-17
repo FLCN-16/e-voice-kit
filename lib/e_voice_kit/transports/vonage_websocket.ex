@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.VonageWebSocket do
+defmodule EVoiceKit.Transports.VonageWebSocket do
   @moduledoc """
   WebSock carrier handler for Vonage (Nexmo) Voice WebSockets.
 

@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Pipeline.BufferTest do
+defmodule EVoiceKit.Pipeline.BufferTest do
   use ExUnit.Case, async: true
   alias EVoiceKit.Pipeline.Buffer
 

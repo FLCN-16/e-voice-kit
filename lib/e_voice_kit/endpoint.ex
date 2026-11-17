@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Endpoint do
+defmodule EVoiceKit.Endpoint do
   @moduledoc """
   HTTP and WebSocket router for incoming carrier webhooks and media streams.
 

@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.FishAudioTTS do
+defmodule EVoiceKit.Clients.FishAudioTTS do
   @moduledoc """
   Streaming client for Fish Audio Text-to-Speech (supporting `s2.1-pro` model).
 

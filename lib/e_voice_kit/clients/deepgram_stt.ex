@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.DeepgramSTT do
+defmodule EVoiceKit.Clients.DeepgramSTT do
   @moduledoc """
   Streaming WebSocket client for Deepgram Nova-2 / Nova-3 Speech-to-Text.
 

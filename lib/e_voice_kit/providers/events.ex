@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.Events do
+defmodule EVoiceKit.Providers.Events do
   @moduledoc """
   Canonical, unified event contracts for all Telephony Carriers, Speech-to-Text (STT),
   and Text-to-Speech (TTS) real-time streams and webhooks.

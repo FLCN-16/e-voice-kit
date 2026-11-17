@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.ElevenLabsTTS do
+defmodule EVoiceKit.Clients.ElevenLabsTTS do
   @moduledoc """
   Streaming WebSocket client for ElevenLabs Text-to-Speech and Dialogue models.
 

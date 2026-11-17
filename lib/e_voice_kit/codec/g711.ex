@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Codec.G711 do
+defmodule EVoiceKit.Codec.G711 do
   @moduledoc """
   High-performance G.711 μ-law (PCMU, payload 0) and A-law (PCMA, payload 8) audio transcoding.
 

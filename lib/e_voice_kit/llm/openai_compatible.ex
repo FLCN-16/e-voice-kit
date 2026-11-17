@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.OpenAICompatible do
+defmodule EVoiceKit.LLM.OpenAICompatible do
   @moduledoc """
   Streaming LLM client for OpenAI-compatible APIs using high-performance HTTP/2 SSE via Finch.
 

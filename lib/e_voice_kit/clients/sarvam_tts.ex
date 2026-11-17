@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.SarvamTTS do
+defmodule EVoiceKit.Clients.SarvamTTS do
   @moduledoc """
   Streaming WebSocket client for Sarvam AI Bulbul Text-to-Speech.
 

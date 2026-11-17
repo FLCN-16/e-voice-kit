@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.WebSocketCarrier do
+defmodule EVoiceKit.Transports.WebSocketCarrier do
   @moduledoc """
   Abstract base class / macro for building WebSocket-based Telephony Carrier Transports.
 

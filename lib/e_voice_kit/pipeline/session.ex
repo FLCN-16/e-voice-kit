@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Pipeline.Session do
+defmodule EVoiceKit.Pipeline.Session do
   @moduledoc """
   Core GenServer managing the lifecycle, turn state machine, and audio coordination of one live call.
 

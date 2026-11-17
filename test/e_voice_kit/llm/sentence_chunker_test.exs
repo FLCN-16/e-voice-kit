@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.SentenceChunkerTest do
+defmodule EVoiceKit.LLM.SentenceChunkerTest do
   use ExUnit.Case, async: true
   alias EVoiceKit.LLM.SentenceChunker
 

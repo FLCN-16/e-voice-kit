@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit do
+defmodule EVoiceKit do
   @moduledoc """
   EVoiceKit (E-Voice-Kit) is the ultra-low-latency, real-time Voice AI edge gateway for telephony and conversational AI.
 

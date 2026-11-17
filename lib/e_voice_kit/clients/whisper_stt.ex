@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.WhisperSTT do
+defmodule EVoiceKit.Clients.WhisperSTT do
   @moduledoc """
   Streaming STT client for self-hosted Whisper / Faster-Whisper endpoints.
 

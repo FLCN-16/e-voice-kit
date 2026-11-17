@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Pipeline.Buffer do
+defmodule EVoiceKit.Pipeline.Buffer do
   @moduledoc """
   Audio frame buffer and packetizer for real-time telephony streaming.
 

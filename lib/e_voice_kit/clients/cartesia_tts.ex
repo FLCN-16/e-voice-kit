@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.CartesiaTTS do
+defmodule EVoiceKit.Clients.CartesiaTTS do
   @moduledoc """
   Streaming WebSocket client for Cartesia Sonic Text-to-Speech.
   Implements `EVoiceKit.Providers.TTS`.

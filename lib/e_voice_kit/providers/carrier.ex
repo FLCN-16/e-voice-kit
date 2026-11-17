@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.Carrier do
+defmodule EVoiceKit.Providers.Carrier do
   @moduledoc """
   Pluggable behaviour and contract for Telephony Carrier Transports.
 

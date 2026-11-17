@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Pipeline.SessionSupervisor do
+defmodule EVoiceKit.Pipeline.SessionSupervisor do
   @moduledoc """
   DynamicSupervisor managing all active call session GenServers.
 

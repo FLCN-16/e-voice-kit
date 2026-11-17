@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.Tools do
+defmodule EVoiceKit.LLM.Tools do
   @moduledoc """
   Tool registry and concurrent executor for LLM agent actions.
 

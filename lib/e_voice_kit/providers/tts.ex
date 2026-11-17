@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.TTS do
+defmodule EVoiceKit.Providers.TTS do
   @moduledoc """
   Pluggable behaviour and abstract base class macro for Text-to-Speech (TTS) providers.
 

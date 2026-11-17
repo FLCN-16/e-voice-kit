@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.AssemblyAISTT do
+defmodule EVoiceKit.Clients.AssemblyAISTT do
   @moduledoc """
   Streaming WebSocket client for AssemblyAI Universal-2 Speech-to-Text.
 

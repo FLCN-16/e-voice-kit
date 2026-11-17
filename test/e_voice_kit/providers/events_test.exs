@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.EventsTest do
+defmodule EVoiceKit.Providers.EventsTest do
   use ExUnit.Case, async: true
   alias EVoiceKit.Providers.Events
 

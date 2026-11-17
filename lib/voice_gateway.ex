@@ -1,4 +1,4 @@
-﻿defmodule VoiceGateway do
+defmodule VoiceGateway do
   @moduledoc """
   Backward compatibility module for `EVoiceKit`.
   Please use `EVoiceKit` in new code.

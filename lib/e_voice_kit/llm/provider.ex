@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.Provider do
+defmodule EVoiceKit.LLM.Provider do
   @moduledoc """
   Pluggable behaviour for streaming LLM inference providers.
 

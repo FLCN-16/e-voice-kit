@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Clients.TTSStreamer do
+defmodule EVoiceKit.Clients.TTSStreamer do
   @moduledoc """
   Unified, pluggable TTS client and provider dispatcher for real-time speech synthesis.
 

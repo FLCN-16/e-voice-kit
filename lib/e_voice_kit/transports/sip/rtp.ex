@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.SIP.RTP do
+defmodule EVoiceKit.Transports.SIP.RTP do
   @moduledoc """
   Native binary codec for Real-time Transport Protocol (RTP) packets (RFC 3550).
 

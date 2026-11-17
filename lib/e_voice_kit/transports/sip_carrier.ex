@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Transports.SIPCarrier do
+defmodule EVoiceKit.Transports.SIPCarrier do
   @moduledoc """
   GenServer handling an active direct SIP / RTP call leg over UDP.
 

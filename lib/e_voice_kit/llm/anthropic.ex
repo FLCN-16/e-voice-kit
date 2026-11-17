@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.Anthropic do
+defmodule EVoiceKit.LLM.Anthropic do
   @moduledoc """
   Streaming LLM client for Anthropic Claude (Claude 3.5 Sonnet / Claude 3.5 Haiku)
   using HTTP/2 SSE streaming via Finch.

@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.SentenceChunker do
+defmodule EVoiceKit.LLM.SentenceChunker do
   @moduledoc """
   Real-time sentence and clause boundary chunker for streaming LLM responses.
 

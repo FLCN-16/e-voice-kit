@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Providers.STT do
+defmodule EVoiceKit.Providers.STT do
   @moduledoc """
   Pluggable behaviour and abstract base class macro for Speech-to-Text (STT) providers.
 

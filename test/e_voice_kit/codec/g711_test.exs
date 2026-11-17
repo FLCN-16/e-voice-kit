@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Codec.G711Test do
+defmodule EVoiceKit.Codec.G711Test do
   use ExUnit.Case, async: true
   alias EVoiceKit.Codec.G711
 

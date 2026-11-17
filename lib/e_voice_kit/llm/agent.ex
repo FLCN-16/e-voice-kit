@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.LLM.Agent do
+defmodule EVoiceKit.LLM.Agent do
   @moduledoc """
   Pure Elixir Conversational LLM Agent.
 

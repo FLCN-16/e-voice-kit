@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Application do
+defmodule EVoiceKit.Application do
   @moduledoc false
 
   use Application
