@@ -79,7 +79,7 @@ defmodule EVoiceKit.Compression.Envelope do
     msg_type = envelope.message_type || 0
 
     header = <<
-      @magic::binary-size(4),
+      @magic::4-bytes,
       @version::8-unsigned-big,
       flags::8-unsigned-big,
       algo_id::8-unsigned-big,
@@ -110,7 +110,7 @@ defmodule EVoiceKit.Compression.Envelope do
 
     case binary do
       <<
-        @magic::binary-size(4),
+        @magic::4-bytes,
         @version::8-unsigned-big,
         flags::8-unsigned-big,
         algo_id::8-unsigned-big,
@@ -138,14 +138,14 @@ defmodule EVoiceKit.Compression.Envelope do
       <<magic::binary-size(4), _rest::binary>> when magic != @magic ->
         {:error, :invalid_magic}
 
-      <<@magic::binary-size(4), version::8, _rest::binary>> when version != @version ->
+      <<@magic::4-bytes, version::8, _rest::binary>> when version != @version ->
         {:error, :unsupported_version}
 
-      <<@magic::binary-size(4), @version::8, _flags::8, _algo::8, header_len::8, _rest::binary>>
+      <<@magic::4-bytes, @version::8, _flags::8, _algo::8, header_len::8, _rest::binary>>
       when header_len != @header_length ->
         {:error, :invalid_header_length}
 
-      <<@magic::binary-size(4), @version::8, _flags::8, _algo::8, @header_length::8, _msg::16,
+      <<@magic::4-bytes, @version::8, _flags::8, _algo::8, @header_length::8, _msg::16,
         reserved::16, _rest::binary>>
       when reserved != 0 ->
         {:error, :reserved_bits_not_zero}
