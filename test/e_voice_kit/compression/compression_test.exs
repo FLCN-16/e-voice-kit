@@ -66,7 +66,10 @@ defmodule EVoiceKit.Compression.CompressionTest do
     end
 
     test "compresses with GZIP above threshold and successfully decodes" do
-      large_payload = String.duplicate("The quick brown fox jumps over the lazy dog. ", 50)
+      large_payload =
+        Enum.map_join(1..60, "\n", fn index ->
+          "#{index}: #{Base.encode16(:crypto.hash(:sha256, "payload-#{index}"))}"
+        end)
       assert byte_size(large_payload) > 1000
 
       assert {:ok, env} = BoundedEncoder.encode(large_payload, :gzip, 10, threshold: 256)
