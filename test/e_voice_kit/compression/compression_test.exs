@@ -1,6 +1,7 @@
 defmodule EVoiceKit.Compression.CompressionTest do
   use ExUnit.Case, async: true
 
+  alias EVoiceKit.Compression.Codecs.{Brotli, Gzip, Zstd}
   alias EVoiceKit.Compression.{BoundedDecoder, BoundedEncoder, Negotiation}
 
   describe "Negotiation" do
@@ -43,7 +44,7 @@ defmodule EVoiceKit.Compression.CompressionTest do
 
       client_hello = %{
         "encoders" => ["gzip"],
-        "decoders" => ["none"] # Client can only decode NONE
+        "decoders" => ["none"]
       }
 
       assert {:ok, _neg, server_hello} = Negotiation.handle_client_hello(neg, client_hello)
@@ -65,7 +66,6 @@ defmodule EVoiceKit.Compression.CompressionTest do
     end
 
     test "compresses with GZIP above threshold and successfully decodes" do
-      # Repetitive payload that compresses well
       large_payload = String.duplicate("The quick brown fox jumps over the lazy dog. ", 50)
       assert byte_size(large_payload) > 1000
 
@@ -80,7 +80,6 @@ defmodule EVoiceKit.Compression.CompressionTest do
     end
 
     test "safely handles decompression bomb / expansion ratio breach" do
-      # Create a simulated bomb envelope with 1000:1 ratio
       bomb_env = %EVoiceKit.Compression.Envelope{
         message_type: 1,
         compressed: true,
@@ -91,6 +90,41 @@ defmodule EVoiceKit.Compression.CompressionTest do
 
       assert {:error, :expansion_ratio_exceeded} =
                BoundedDecoder.decode(bomb_env, max_expansion_ratio: 15.0)
+    end
+
+    test "enforces streaming output limit when envelope forged length is small" do
+      large_payload = String.duplicate("A", 10_000)
+      {:ok, compressed} = Gzip.compress(large_payload)
+
+      # Attacker forges plain_length as 50 to evade pre-check
+      forged_env = %EVoiceKit.Compression.Envelope{
+        message_type: 1,
+        compressed: true,
+        algorithm: :gzip,
+        plain_length: 50,
+        payload: compressed
+      }
+
+      # Gzip bounded streaming decompression must abort because decompressed output exceeds 50
+      assert {:error, :decompression_limit_exceeded} = BoundedDecoder.decode(forged_env, [])
+    end
+
+    test "round-trips Zstandard when ezstd NIF is available" do
+      if Zstd.available?() do
+        payload = String.duplicate("Realtime WebRTC Zstd Media Stream ", 40)
+        assert {:ok, compressed} = Zstd.compress(payload)
+        assert {:ok, decompressed} = Zstd.decompress(compressed)
+        assert decompressed == payload
+      end
+    end
+
+    test "round-trips Brotli when brotli NIF is available" do
+      if Brotli.available?() do
+        payload = String.duplicate("Realtime WebRTC Brotli Signaling Stream ", 40)
+        assert {:ok, compressed} = Brotli.compress(payload)
+        assert {:ok, decompressed} = Brotli.decompress(compressed)
+        assert decompressed == payload
+      end
     end
   end
 end

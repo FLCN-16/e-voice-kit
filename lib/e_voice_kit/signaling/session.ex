@@ -9,15 +9,21 @@ defmodule EVoiceKit.Signaling.Session do
   use GenServer
   require Logger
 
+  alias EVoiceKit.Auth.Token
   alias EVoiceKit.Compression.{BoundedDecoder, BoundedEncoder, Envelope, Negotiation}
+  alias EVoiceKit.Rooms.{Registry, RoomCoordinator, RoomDynamicSupervisor}
+  alias EVoiceKit.RTC.PeerConnectionOwner
   alias EVoiceKit.Signaling.Protocol
 
   defstruct [
     :session_id,
     :transport_pid,
+    :initial_token,
     :room_id,
+    :room_coordinator,
     :participant_id,
     :peer_connection_pid,
+    :permissions,
     state: :await_client_hello,
     negotiation: nil,
     authenticated: false,
@@ -66,13 +72,20 @@ defmodule EVoiceKit.Signaling.Session do
   def init(opts) do
     session_id = Keyword.get(opts, :session_id, generate_id("sess_"))
     transport_pid = Keyword.get(opts, :transport_pid, self())
+    initial_token = Keyword.get(opts, :token)
     neg = Negotiation.new()
 
     state = %__MODULE__{
       session_id: session_id,
       transport_pid: transport_pid,
+      initial_token: initial_token,
       state: :await_client_hello,
-      negotiation: neg
+      negotiation: neg,
+      permissions: %{
+        "can_publish" => true,
+        "can_subscribe" => true,
+        "can_publish_data" => true
+      }
     }
 
     {:ok, state}
@@ -100,33 +113,85 @@ defmodule EVoiceKit.Signaling.Session do
       msg_type = Protocol.msg_name(envelope.message_type)
       dispatch_message(state, msg_type, json_map, envelope.request_id)
     else
-      {:error, reason} = err ->
-        Logger.warning("Signaling session frame rejection: #{inspect(reason)}")
-        {:reply, err, state}
+      {:error, reason} ->
+        Logger.warning("Inbound frame error in session #{state.session_id}: #{inspect(reason)}")
+        err_msg = Protocol.build_error(:frame_decode_error, "Frame decode error: #{inspect(reason)}", 0)
+        {:ok, err_bin} = encode_uncompressed(Protocol.msg_type(:error), err_msg, 0)
+        {:reply, {:error, reason, [err_bin]}, state}
     end
   end
 
-  # --- Message Dispatcher ---
+  # Local ICE candidate emitted by PeerConnectionOwner -> forward to client via transport
+  @impl true
+  def handle_info({:local_ice_candidate, cand_map}, state) do
+    if state.state == :connected and is_pid(state.transport_pid) do
+      case encode_outbound(state, :ice_candidate, cand_map, 0) do
+        {:ok, binary} ->
+          send(state.transport_pid, {:push_message, binary})
+
+        _ ->
+          :ok
+      end
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(_reason, state) do
+    if is_pid(state.room_coordinator) and state.participant_id do
+      RoomCoordinator.leave_participant(state.room_coordinator, state.participant_id)
+    end
+
+    if is_pid(state.peer_connection_pid) and Process.alive?(state.peer_connection_pid) do
+      GenServer.stop(state.peer_connection_pid, :normal)
+    end
+
+    :ok
+  end
+
+  # --- Protocol Message Dispatchers ---
 
   defp dispatch_message(%__MODULE__{state: :await_client_hello} = state, :client_hello, payload, req_id) do
-    case Negotiation.handle_client_hello(state.negotiation, payload) do
-      {:ok, updated_neg, server_hello} ->
-        # ServerHello MUST be uncompressed (ADR-0002)
+    client_version = payload["protocol_version"] || 1
+    client_encs = payload["client_encoders"] || ["none"]
+    client_decs = payload["client_decoders"] || ["none"]
+
+    case Negotiation.propose(state.negotiation, client_version, client_encs, client_decs) do
+      {:ok, updated_neg} ->
+        server_hello = %{
+          "type" => "server_hello",
+          "protocol_version" => updated_neg.protocol_version,
+          "chosen_c2s_algorithm" => to_string(updated_neg.chosen_c2s_algorithm),
+          "chosen_s2c_algorithm" => to_string(updated_neg.chosen_s2c_algorithm),
+          "session_id" => state.session_id
+        }
+
         new_state = %{state | state: :negotiating, negotiation: updated_neg}
         {:ok, resp_bin} = encode_uncompressed(Protocol.msg_type(:server_hello), server_hello, req_id)
         {:reply, {:ok, [resp_bin]}, new_state}
 
       {:error, reason} ->
-        error_resp = Protocol.build_error(:compression_mismatch, "Failed to negotiate capabilities", req_id)
+        error_resp = Protocol.build_error(:negotiation_failed, "Protocol capability negotiation failed", req_id)
         {:ok, err_bin} = encode_uncompressed(Protocol.msg_type(:error), error_resp, req_id)
         {:reply, {:error, reason, [err_bin]}, %{state | state: :closed}}
     end
   end
 
-  defp dispatch_message(%__MODULE__{state: :negotiating} = state, :client_ready, payload, req_id) do
-    case Negotiation.handle_client_ready(state.negotiation, payload) do
-      {:ok, updated_neg, server_ready} ->
-        # ServerReady MUST be uncompressed (ADR-0002)
+  defp dispatch_message(%__MODULE__{state: :negotiating} = state, :client_ready, _payload, req_id) do
+    case Negotiation.confirm(state.negotiation) do
+      {:ok, updated_neg} ->
+        server_ready = %{
+          "type" => "server_ready",
+          "session_id" => state.session_id,
+          "compression_active" => true,
+          "c2s" => to_string(updated_neg.chosen_c2s_algorithm),
+          "s2c" => to_string(updated_neg.chosen_s2c_algorithm)
+        }
+
         new_state = %{state | state: :signaling_ready, negotiation: updated_neg}
         {:ok, resp_bin} = encode_uncompressed(Protocol.msg_type(:server_ready), server_ready, req_id)
         {:reply, {:ok, [resp_bin]}, new_state}
@@ -140,27 +205,63 @@ defmodule EVoiceKit.Signaling.Session do
 
   defp dispatch_message(%__MODULE__{state: state_name} = state, :join_room, payload, req_id)
        when state_name in [:signaling_ready, :connected] do
-    room_name = payload["room"] || "default"
-    participant_identity = payload["identity"] || generate_id("user_")
+    token_str = payload["token"] || state.initial_token
 
-    new_state = %{
-      state
-      | state: :connected,
-        room_id: room_name,
-        participant_id: participant_identity,
-        authenticated: true
-    }
+    # Verify cryptographic token
+    case Token.verify(token_str) do
+      {:ok, claims} ->
+        room_name = claims["room"] || payload["room"] || "default"
+        identity = claims["identity"] || payload["identity"] || generate_id("user_")
+        permissions = claims["permissions"] || state.permissions
 
-    join_response = %{
-      "type" => "join_room_response",
-      "room" => room_name,
-      "participant_id" => participant_identity,
-      "session_id" => state.session_id,
-      "status" => "joined"
-    }
+        # Ensure RoomCoordinator is started
+        room_coord_pid = get_or_start_room(room_name)
+        router_pid = if is_pid(room_coord_pid), do: RoomCoordinator.get_router(room_coord_pid), else: nil
 
-    {:ok, resp_bin} = encode_outbound(new_state, :join_room_response, join_response, req_id)
-    {:reply, {:ok, [resp_bin]}, new_state}
+        # Start dedicated ExWebRTC PeerConnectionOwner
+        {:ok, pc_pid} =
+          PeerConnectionOwner.start_link(
+            participant_sid: identity,
+            router_pid: router_pid,
+            session_pid: self()
+          )
+
+        # Join participant into RoomCoordinator
+        participant_sid =
+          case RoomCoordinator.join_participant(room_coord_pid, identity, session_pid: self(), permissions: permissions) do
+            {:ok, participant} -> participant.participant_sid
+            _ -> identity
+          end
+
+        new_state = %{
+          state
+          | state: :connected,
+            room_id: room_name,
+            room_coordinator: room_coord_pid,
+            participant_id: participant_sid,
+            peer_connection_pid: pc_pid,
+            permissions: permissions,
+            authenticated: true
+        }
+
+        join_response = %{
+          "type" => "join_room_response",
+          "room" => room_name,
+          "participant_id" => participant_sid,
+          "session_id" => state.session_id,
+          "status" => "joined",
+          "permissions" => permissions
+        }
+
+        {:ok, resp_bin} = encode_outbound(new_state, :join_room_response, join_response, req_id)
+        {:reply, {:ok, [resp_bin]}, new_state}
+
+      {:error, reason} ->
+        Logger.warning("Join rejected in session #{state.session_id}: unauthorized (#{inspect(reason)})")
+        err = Protocol.build_error(:unauthorized, "Authentication failed: #{inspect(reason)}", req_id)
+        {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+        {:reply, {:error, :unauthorized, [err_bin]}, state}
+    end
   end
 
   defp dispatch_message(%__MODULE__{state: :connected} = state, :ping, payload, req_id) do
@@ -169,39 +270,123 @@ defmodule EVoiceKit.Signaling.Session do
     {:reply, {:ok, [resp_bin]}, state}
   end
 
+  # Remote SDP Offer from client -> apply to PeerConnectionOwner and return answer
   defp dispatch_message(%__MODULE__{state: :connected} = state, :sdp_offer, payload, req_id) do
-    # Echo / answer negotiation
     sdp = payload["sdp"] || ""
+
+    answer_sdp =
+      if is_pid(state.peer_connection_pid) do
+        case PeerConnectionOwner.apply_offer(state.peer_connection_pid, sdp) do
+          {:ok, answer} -> answer
+          _ -> "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+        end
+      else
+        "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
+      end
+
     sdp_answer = %{
       "type" => "sdp_answer",
-      "sdp" => "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+      "sdp" => answer_sdp,
       "offer_received" => byte_size(sdp) > 0
     }
+
     {:ok, resp_bin} = encode_outbound(state, :sdp_answer, sdp_answer, req_id)
     {:reply, {:ok, [resp_bin]}, state}
   end
 
+  # Remote Trickle ICE Candidate from client -> apply to PeerConnectionOwner
+  defp dispatch_message(%__MODULE__{state: :connected} = state, :ice_candidate, payload, _req_id) do
+    if is_pid(state.peer_connection_pid) do
+      PeerConnectionOwner.add_ice_candidate(state.peer_connection_pid, payload)
+    end
+
+    {:reply, {:ok, []}, state}
+  end
+
+  # Publish Track
   defp dispatch_message(%__MODULE__{state: :connected} = state, :publish_track, payload, req_id) do
-    track_sid = generate_id("TR_")
-    track_published = %{
-      "type" => "track_published",
-      "track_sid" => track_sid,
-      "kind" => payload["kind"] || "audio",
-      "source" => payload["source"] || "microphone"
-    }
-    {:ok, resp_bin} = encode_outbound(state, :track_published, track_published, req_id)
-    {:reply, {:ok, [resp_bin]}, state}
+    if state.permissions["can_publish"] == true do
+      track_params = %{
+        kind: payload["kind"] || "audio",
+        source: payload["source"] || "microphone",
+        payload_type: payload["payload_type"] || 111,
+        ssrc: payload["ssrc"] || 0
+      }
+
+      track_sid =
+        if is_pid(state.room_coordinator) do
+          case RoomCoordinator.publish_track(state.room_coordinator, state.participant_id, track_params) do
+            {:ok, sid} -> sid
+            _ -> generate_id("TR_")
+          end
+        else
+          generate_id("TR_")
+        end
+
+      track_published = %{
+        "type" => "track_published",
+        "track_sid" => track_sid,
+        "kind" => track_params.kind,
+        "source" => track_params.source
+      }
+
+      {:ok, resp_bin} = encode_outbound(state, :track_published, track_published, req_id)
+      {:reply, {:ok, [resp_bin]}, state}
+    else
+      err = Protocol.build_error(:permission_denied, "Publish permission denied", req_id)
+      {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+      {:reply, {:error, :permission_denied, [err_bin]}, state}
+    end
+  end
+
+  # Subscribe Track
+  defp dispatch_message(%__MODULE__{state: :connected} = state, :subscribe_track, payload, req_id) do
+    track_sid = payload["track_sid"]
+
+    if state.permissions["can_subscribe"] == true and is_binary(track_sid) do
+      if is_pid(state.room_coordinator) and is_pid(state.peer_connection_pid) do
+        RoomCoordinator.subscribe_track(
+          state.room_coordinator,
+          state.participant_id,
+          track_sid,
+          state.peer_connection_pid
+        )
+      end
+
+      track_subscribed = %{
+        "type" => "track_subscribed",
+        "track_sid" => track_sid,
+        "status" => "subscribed"
+      }
+
+      {:ok, resp_bin} = encode_outbound(state, :track_subscribed, track_subscribed, req_id)
+      {:reply, {:ok, [resp_bin]}, state}
+    else
+      err = Protocol.build_error(:permission_denied, "Subscribe permission denied", req_id)
+      {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+      {:reply, {:error, :permission_denied, [err_bin]}, state}
+    end
   end
 
   defp dispatch_message(%__MODULE__{state: :connected} = state, :leave_room, _payload, req_id) do
-    new_state = %{state | state: :closed, room_id: nil}
+    if is_pid(state.room_coordinator) and state.participant_id do
+      RoomCoordinator.leave_participant(state.room_coordinator, state.participant_id)
+    end
+
+    new_state = %{state | state: :closed, room_id: nil, room_coordinator: nil}
     resp = %{"type" => "left_room", "status" => "ok"}
     {:ok, resp_bin} = encode_outbound(new_state, :leave_room, resp, req_id)
     {:reply, {:ok, [resp_bin]}, new_state}
   end
 
   defp dispatch_message(state, unknown_msg, _payload, req_id) do
-    err = Protocol.build_error(:internal_error, "Unexpected message: #{inspect(unknown_msg)} in state #{state.state}", req_id)
+    err =
+      Protocol.build_error(
+        :internal_error,
+        "Unexpected message: #{inspect(unknown_msg)} in state #{state.state}",
+        req_id
+      )
+
     {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
     {:reply, {:error, :unexpected_message, [err_bin]}, state}
   end
@@ -214,7 +399,6 @@ defmodule EVoiceKit.Signaling.Session do
     if neg.state == :active do
       Negotiation.validate_inbound_algorithm(neg, envelope.algorithm)
     else
-      # Pre-activation frames must be uncompressed (NONE)
       if envelope.compressed do
         {:error, :compressed_frame_before_negotiation_active}
       else
@@ -223,38 +407,51 @@ defmodule EVoiceKit.Signaling.Session do
     end
   end
 
+  defp parse_json_payload(plain_binary) when is_binary(plain_binary) do
+    if byte_size(plain_binary) == 0 do
+      {:ok, %{}}
+    else
+      Jason.decode(plain_binary)
+    end
+  end
+
   defp encode_outbound(state, msg_type_atom, payload_map, req_id) do
-    msg_type_int = Protocol.msg_type(msg_type_atom)
-    json_binary = Jason.encode!(payload_map)
+    msg_type = Protocol.msg_type(msg_type_atom)
+    {:ok, json_bytes} = Jason.encode(payload_map)
 
-    # Determine outbound algorithm
-    algo =
-      if state.negotiation && state.negotiation.state == :active do
-        state.negotiation.server_to_client || :none
-      else
-        :none
-      end
-
-    with {:ok, envelope} <- BoundedEncoder.encode(json_binary, algo, msg_type_int, request_id: req_id),
-         {:ok, binary} <- Envelope.encode(envelope) do
-      {:ok, binary}
+    case BoundedEncoder.encode(json_bytes, state.negotiation, message_type: msg_type, request_id: req_id) do
+      {:ok, %Envelope{} = env} -> Envelope.encode(env)
+      err -> err
     end
   end
 
-  defp encode_uncompressed(msg_type_int, payload_map, req_id) do
-    json_binary = Jason.encode!(payload_map)
+  defp encode_uncompressed(msg_type, payload_map, req_id) do
+    {:ok, json_bytes} = Jason.encode(payload_map)
 
-    with {:ok, envelope} <-
-           BoundedEncoder.encode(json_binary, :none, msg_type_int, request_id: req_id),
-         {:ok, binary} <- Envelope.encode(envelope) do
-      {:ok, binary}
-    end
+    env = %Envelope{
+      compressed: false,
+      algorithm: :none,
+      message_type: msg_type,
+      request_id: req_id,
+      plain_length: byte_size(json_bytes),
+      payload: json_bytes
+    }
+
+    Envelope.encode(env)
   end
 
-  defp parse_json_payload(binary) do
-    Jason.decode(binary)
-  rescue
-    e -> {:error, {:invalid_json, e}}
+  defp get_or_start_room(room_name) do
+    case Registry.lookup(room_name) do
+      {:ok, pid} ->
+        pid
+
+      _ ->
+        case RoomDynamicSupervisor.start_room(room_name) do
+          {:ok, pid} -> pid
+          {:error, {:already_started, pid}} -> pid
+          _ -> nil
+        end
+    end
   end
 
   defp generate_id(prefix) do

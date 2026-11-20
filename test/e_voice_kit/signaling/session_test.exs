@@ -1,11 +1,12 @@
 defmodule EVoiceKit.Signaling.SessionTest do
   use ExUnit.Case, async: true
 
+  alias EVoiceKit.Auth.Token
   alias EVoiceKit.Compression.{BoundedDecoder, Envelope}
   alias EVoiceKit.Signaling.{Protocol, Session}
 
   describe "Full Signaling Lifecycle: ClientHello -> ClientReady -> JoinRoom -> PublishTrack" do
-    test "completes negotiation and processes room messages" do
+    test "completes negotiation and processes room messages with authenticated token" do
       {:ok, session} = Session.start_link()
 
       # 1. Send ClientHello
@@ -60,11 +61,23 @@ defmodule EVoiceKit.Signaling.SessionTest do
       assert {:ok, server_ready_env} = Envelope.decode(server_ready_bin)
       assert server_ready_env.message_type == Protocol.msg_type(:server_ready)
 
-      # 3. Join Room
+      # 3. Join Room with cryptographic authentication token
+      {:ok, token} =
+        Token.generate(%{
+          "room" => "test_conference",
+          "identity" => "alice",
+          "permissions" => %{
+            "can_publish" => true,
+            "can_subscribe" => true,
+            "can_publish_data" => true
+          }
+        })
+
       join_req = %{
         "type" => "join_room",
         "room" => "test_conference",
-        "identity" => "alice"
+        "identity" => "alice",
+        "token" => token
       }
 
       join_payload = Jason.encode!(join_req)
@@ -106,7 +119,26 @@ defmodule EVoiceKit.Signaling.SessionTest do
       assert {:ok, pong_env} = Envelope.decode(pong_bin)
       assert pong_env.message_type == Protocol.msg_type(:pong)
 
-      # 5. Publish Track
+      # 5. SDP Offer / Answer exchange
+      dummy_offer = "v=0\r\no=- 12345 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 5004 UDP/TLS/RTP/SAVPF 111\r\n"
+      offer_req = %{"type" => "sdp_offer", "sdp" => dummy_offer}
+      offer_payload = Jason.encode!(offer_req)
+
+      offer_env = %Envelope{
+        message_type: Protocol.msg_type(:sdp_offer),
+        compressed: false,
+        algorithm: :none,
+        plain_length: byte_size(offer_payload),
+        request_id: 5,
+        payload: offer_payload
+      }
+
+      {:ok, offer_binary} = Envelope.encode(offer_env)
+      assert {:ok, [answer_bin]} = Session.handle_frame(session, offer_binary)
+      assert {:ok, answer_env} = Envelope.decode(answer_bin)
+      assert answer_env.message_type == Protocol.msg_type(:sdp_answer)
+
+      # 6. Publish Track
       pub_req = %{"type" => "publish_track", "kind" => "audio", "source" => "microphone"}
       pub_payload = Jason.encode!(pub_req)
 
@@ -115,7 +147,7 @@ defmodule EVoiceKit.Signaling.SessionTest do
         compressed: false,
         algorithm: :none,
         plain_length: byte_size(pub_payload),
-        request_id: 5,
+        request_id: 6,
         payload: pub_payload
       }
 
@@ -125,10 +157,54 @@ defmodule EVoiceKit.Signaling.SessionTest do
       assert pub_resp_env.message_type == Protocol.msg_type(:track_published)
     end
 
+    test "rejects unauthenticated join attempt" do
+      {:ok, session} = Session.start_link()
+
+      # Send hello and ready
+      {:ok, hello_bin} =
+        Envelope.encode(%Envelope{
+          message_type: Protocol.msg_type(:client_hello),
+          compressed: false,
+          algorithm: :none,
+          plain_length: 2,
+          payload: "{}"
+        })
+
+      {:ok, [server_hello_bin]} = Session.handle_frame(session, hello_bin)
+      {:ok, env} = Envelope.decode(server_hello_bin)
+      {:ok, json} = BoundedDecoder.decode(env, [])
+      neg_id = Jason.decode!(json)["negotiation_id"]
+
+      {:ok, ready_bin} =
+        Envelope.encode(%Envelope{
+          message_type: Protocol.msg_type(:client_ready),
+          compressed: false,
+          algorithm: :none,
+          plain_length: byte_size(neg_id),
+          payload: Jason.encode!(%{"negotiation_id" => neg_id})
+        })
+
+      {:ok, _} = Session.handle_frame(session, ready_bin)
+
+      # Try to join with missing or invalid token
+      join_req = %{"type" => "join_room", "room" => "secure_room", "identity" => "hacker"}
+      {:ok, join_bin} =
+        Envelope.encode(%Envelope{
+          message_type: Protocol.msg_type(:join_room),
+          compressed: false,
+          algorithm: :none,
+          plain_length: 50,
+          payload: Jason.encode!(join_req)
+        })
+
+      assert {:error, :unauthorized, [err_bin]} = Session.handle_frame(session, join_bin)
+      assert {:ok, err_env} = Envelope.decode(err_bin)
+      assert err_env.message_type == Protocol.msg_type(:error)
+    end
+
     test "rejects compressed frame sent before negotiation completes" do
       {:ok, session} = Session.start_link()
 
-      # Send a compressed frame while still in :await_client_hello
       illegal_env = %Envelope{
         message_type: Protocol.msg_type(:join_room),
         compressed: true,

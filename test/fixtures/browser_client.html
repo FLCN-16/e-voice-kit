@@ -2,40 +2,60 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>E-Voice-Kit Native SFU Client Test</title>
+  <title>E-Voice-Kit WebRTC SFU Test Client</title>
   <style>
-    body { font-family: monospace; padding: 20px; background: #1e1e2e; color: #cdd6f4; }
-    button { background: #89b4fa; color: #11111b; border: none; padding: 8px 16px; font-weight: bold; cursor: pointer; border-radius: 4px; }
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #0f172a; color: #f8fafc; }
+    h1 { color: #38bdf8; font-size: 24px; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #94a3b8; }
+    input { width: 100%; padding: 8px 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; margin-bottom: 16px; box-sizing: border-box; }
+    button { background: #0284c7; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-right: 8px; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    #log { background: #11111b; border: 1px solid #313244; padding: 10px; height: 350px; overflow-y: scroll; margin-top: 15px; border-radius: 4px; }
-    .success { color: #a6e3a1; }
-    .info { color: #89b4fa; }
-    .error { color: #f38ba8; }
+    #log { background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; height: 260px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+    .log-entry { margin-bottom: 4px; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .info { color: #38bdf8; }
+    audio { width: 100%; margin-top: 12px; }
   </style>
 </head>
 <body>
-  <h2>E-Voice-Kit Native SFU Test Client</h2>
-  <div>
-    <label>Room: <input id="room" value="demo_room" style="padding: 6px;"></label>
-    <label>Identity: <input id="identity" value="browser_user" style="padding: 6px;"></label>
-    <button id="btnConnect" onclick="connect()">Connect & Join</button>
-    <button id="btnPublish" onclick="publishAudio()" disabled>Publish Mic</button>
-    <button id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+  <h1>E-Voice-Kit WebRTC SFU Test Client</h1>
+  
+  <div class="card">
+    <label for="room">Room Name</label>
+    <input id="room" value="test-room" />
+    
+    <label for="identity">Participant Identity</label>
+    <input id="identity" value="browser-client-1" />
+    
+    <div>
+      <button id="btnConnect" onclick="connect()">1. Authenticate & Connect</button>
+      <button id="btnPublish" onclick="publishAudio()" disabled>2. Publish Microphone</button>
+      <button id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+
+    <label style="margin-top: 16px;">Remote Forwarded Audio Output</label>
+    <audio id="remoteAudio" autoplay controls></audio>
   </div>
-  <div id="log"></div>
+
+  <div class="card">
+    <label>Signaling & Media Logs</label>
+    <div id="log"></div>
+  </div>
 
   <script>
     let ws = null;
     let pc = null;
     let localStream = null;
-    let negotiationId = null;
+    let authToken = null;
 
-    function log(msg, cls = "info") {
+    function log(msg, type = "info") {
       const el = document.getElementById("log");
-      const d = document.createElement("div");
-      d.className = cls;
-      d.textContent = `[${new Date().toISOString().substring(11, 19)}] ${msg}`;
-      el.appendChild(d);
+      const entry = document.createElement("div");
+      entry.className = "log-entry " + type;
+      entry.textContent = `[${new Date().toISOString().substring(11, 23)}] ${msg}`;
+      el.appendChild(entry);
       el.scrollTop = el.scrollHeight;
     }
 
@@ -81,44 +101,44 @@
       const room = document.getElementById("room").value;
       const identity = document.getElementById("identity").value;
 
-      log(`Requesting connection ticket for room '${room}'...`);
+      log(`Requesting signed connection JWT token for room '${room}'...`);
       const tokenResp = await fetch("/rtc/v1/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ room, identity })
       });
       const tokenData = await tokenResp.json();
-      log(`Ticket granted: ${tokenData.token}`);
+      authToken = tokenData.token;
+      log(`Signed JWT token issued (expires in ${tokenData.expires_in}s)`, "success");
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${proto}//${window.location.host}${tokenData.ws_url}`;
-      log(`Opening signaling WebSocket: ${wsUrl}...`);
+      log(`Connecting to WebSocket signaling: ${wsUrl}...`);
 
       ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
 
       ws.onopen = () => {
-        log("WebSocket connected. Sending uncompressed ClientHello...", "success");
+        log("WebSocket connected. Sending ClientHello with supported codecs...", "success");
         const clientHello = {
           type: "client_hello",
-          protocol_version: "1.0",
-          encoders: ["none"],
-          decoders: ["none"]
+          protocol_version: 1,
+          client_encoders: ["none", "gzip", "zstd", "brotli"],
+          client_decoders: ["none", "gzip", "zstd", "brotli"]
         };
         ws.send(encodeEnvelope(1, clientHello, 1));
       };
 
       ws.onmessage = async (e) => {
         const { msgType, json } = decodeEnvelope(e.data);
-        log(`Received msgType ${msgType}: ${JSON.stringify(json)}`);
+        log(`Received msgType ${msgType} (${json.type}): ${JSON.stringify(json)}`);
 
         if (msgType === 2) { // ServerHello
-          negotiationId = json.negotiation_id;
-          log(`Capabilities negotiated (ID: ${negotiationId}). Sending ClientReady...`, "success");
-          ws.send(encodeEnvelope(3, { type: "client_ready", negotiation_id: negotiationId }, 2));
+          log(`Directional codecs negotiated (C2S: ${json.chosen_c2s_algorithm}, S2C: ${json.chosen_s2c_algorithm}). Sending ClientReady...`, "success");
+          ws.send(encodeEnvelope(3, { type: "client_ready", session_id: json.session_id }, 2));
         } else if (msgType === 4) { // ServerReady
-          log("Signaling active. Joining room...", "success");
-          ws.send(encodeEnvelope(10, { type: "join_room", room, identity }, 3));
+          log("Signaling ready. Joining room with authentication token...", "success");
+          ws.send(encodeEnvelope(10, { type: "join_room", room, identity, token: authToken }, 3));
         } else if (msgType === 11) { // JoinRoomResponse
           log(`Joined room '${json.room}' as participant '${json.participant_id}'!`, "success");
           document.getElementById("btnPublish").disabled = false;
@@ -127,7 +147,16 @@
         } else if (msgType === 21) { // SdpAnswer
           if (pc && pc.signalingState === "have-local-offer") {
             await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: json.sdp }));
-            log("Remote SDP answer applied. WebRTC connected!", "success");
+            log("Remote SDP answer applied. WebRTC DTLS/SRTP connection established!", "success");
+          }
+        } else if (msgType === 22) { // Remote IceCandidate from server
+          if (pc && json.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate({
+              candidate: json.candidate,
+              sdpMid: json.sdpMid,
+              sdpMLineIndex: json.sdpMLineIndex
+            }));
+            log("Remote ICE candidate added.", "info");
           }
         }
       };
@@ -143,16 +172,39 @@
 
     async function publishAudio() {
       try {
-        log("Accessing microphone...");
+        log("Accessing local microphone...");
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        pc = new RTCPeerConnection();
+        
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+
+        // Trickle ICE candidates to server
+        pc.onicecandidate = (event) => {
+          if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(encodeEnvelope(22, {
+              type: "ice_candidate",
+              candidate: event.candidate.candidate,
+              sdpMid: event.candidate.sdpMid,
+              sdpMLineIndex: event.candidate.sdpMLineIndex
+            }, 6));
+          }
+        };
+
+        // Play incoming remote audio from SFU
+        pc.ontrack = (event) => {
+          log("Remote media track received from SFU router!", "success");
+          const remoteAudio = document.getElementById("remoteAudio");
+          remoteAudio.srcObject = event.streams[0];
+          remoteAudio.play().catch(e => log("Autoplay blocked: " + e.message, "error"));
+        };
 
         localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        log("Sending SDP offer to server...");
+        log("Sending SDP offer to SFU server...");
         ws.send(encodeEnvelope(20, { type: "sdp_offer", sdp: offer.sdp }, 4));
 
         ws.send(encodeEnvelope(30, { type: "publish_track", kind: "audio", source: "microphone" }, 5));

@@ -19,15 +19,20 @@
 
 ---
 
-## Key Capabilities
+## Implementation Status & Core Capabilities
 
-* **Native Elixir WebRTC SFU:** Live selective media forwarding for audio and video powered by ExWebRTC. Multi-party room routing without server-side transcoding bottlenecks.
-* **Multiplexed 28-Byte Binary Framing (`EVK1`):** Custom high-efficiency application envelope for WebSocket signaling and WebRTC DataChannels with strict memory caps and decompression-bomb safeguards.
-* **Directional Capability Negotiation:** Independent directional negotiation of compression algorithms (`Zstandard`, `Brotli`, `Gzip`, `NONE`) based on client-advertised encoder/decoder capabilities.
-* **Multi-Party Room & Participant Isolation:** OTP-supervised room coordinators and isolated participant sessions. Individual participant disconnects or failures never crash the room.
-* **First-Class AI Room Participants:** Voice AI agents join rooms, consume multi-party audio, stream STT/LLM inference, and publish synthesized speech directly into room tracks.
-* **Carrier & PSTN Gateway Integration:** Bi-directional bridge for Twilio, Telnyx, Vonage, and SIP trunks into WebRTC conference rooms.
-* **Sub-50ms Barge-In:** Instant audio queue flushing and turn cancellation upon caller speech interruption.
+| Capability | Module Namespace | Status | Details |
+| :--- | :--- | :--- | :--- |
+| **WebRTC PeerConnection Media** | `EVoiceKit.RTC.PeerConnectionOwner` | **Active / Implemented** | Native ExWebRTC (0.18.0) Unified Plan, DTLS-SRTP, SDP offer/answer, trickle ICE |
+| **Binary Framing & Envelope** | `EVoiceKit.Compression.Envelope` | **Active / Implemented** | Fixed 28-byte `EVK1` header with endianness validation and message type routing |
+| **Streaming Bounded Decompression** | `EVoiceKit.Compression.BoundedDecoder` | **Active / Implemented** | Runtime output-capped `:zlib.safeInflate` preventing decompression bomb attacks |
+| **Directional Negotiation** | `EVoiceKit.Compression.Negotiation` | **Active / Implemented** | Asymmetric C2S & S2C codec negotiation (`Zstd`, `Brotli`, `Gzip`, `NONE`) |
+| **Cryptographic Authentication** | `EVoiceKit.Auth.Token` | **Active / Implemented** | HMAC-SHA256 signed JWT tokens with room, tenant, and permission grants |
+| **Supervised Rooms & Isolation** | `EVoiceKit.Rooms.RoomCoordinator` | **Active / Implemented** | DynamicSupervisor isolation, admission control, process monitoring |
+| **Concurrent SFU Track Router** | `EVoiceKit.SFU.Router` | **Active / Implemented** | Fast-path ETS route dispatching, SSRC/PT remapping, slow-subscriber isolation |
+| **WebRTC DataChannels** | `EVoiceKit.DataChannels.Relay` | *Phase 2 / Experimental* | Optional ExSCTP data relay architecture |
+| **SIP Trunk Room Ingress** | `EVoiceKit.SIP.RoomAdapter` | *Phase 2 / In Progress* | G.711 telephony bridge to WebRTC room tracks |
+| **Voice AI Room Agent** | `EVoiceKit.VoiceAI.Participant` | *Phase 2 / In Progress* | First-class AI participant subscribing and publishing in room |
 
 ---
 

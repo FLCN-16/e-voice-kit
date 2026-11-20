@@ -13,7 +13,8 @@ defmodule EVoiceKit.Compression.BoundedDecoder do
   @default_max_expansion_ratio 15.0
 
   @doc """
-  Decompresses the payload of an `%EVoiceKit.Compression.Envelope{}` struct within safe limits.
+  Decompresses the payload of an `%EVoiceKit.Compression.Envelope{}` struct within strictly safe limits.
+  Enforces streaming output caps during decompression to prevent decompression bombs.
   """
   @spec decode(Envelope.t(), keyword()) :: {:ok, binary()} | {:error, atom() | {atom(), term()}}
   def decode(%Envelope{compressed: false} = env, _opts) do
@@ -35,7 +36,10 @@ defmodule EVoiceKit.Compression.BoundedDecoder do
         {:error, :expansion_ratio_exceeded}
 
       true ->
-        decompress_with_codec(env.algorithm, env.payload, declared_plain, opts)
+        # Pass effective cap to codec so decompression is bounded at runtime
+        effective_cap = min(declared_plain, max_plain)
+        codec_opts = Keyword.put(opts, :max_plain_length, effective_cap)
+        decompress_with_codec(env.algorithm, env.payload, declared_plain, codec_opts)
     end
   end
 

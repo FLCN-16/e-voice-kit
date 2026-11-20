@@ -4,6 +4,7 @@ defmodule EVoiceKit.SFU.PacketMapper do
 
   Translates payload type and SSRC between publisher UpTracks and subscriber DownTracks
   without decoding the underlying media payload.
+  Supports both raw 12-byte fixed-header binaries and `%ExRTP.Packet{}` structs.
 
   See `docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md` (Section 15 & 16).
   """
@@ -44,9 +45,10 @@ defmodule EVoiceKit.SFU.PacketMapper do
 
   @doc """
   Rewrites an incoming RTP packet for egress over a specific DownTrack.
+  Supports binary packets and `%ExRTP.Packet{}` structs.
   Remaps the SSRC and payload type in place while preserving the media payload.
   """
-  @spec rewrite_for_down_track(binary(), DownTrack.t()) :: {:ok, binary()} | {:error, term()}
+  @spec rewrite_for_down_track(term(), DownTrack.t()) :: {:ok, term()} | {:error, term()}
   def rewrite_for_down_track(
         <<2::2, p::1, x::1, cc::4, m::1, _pt::7, seq::16, ts::32, _src_ssrc::32,
           rest_payload::binary>>,
@@ -75,7 +77,38 @@ defmodule EVoiceKit.SFU.PacketMapper do
     {:ok, rewritten}
   end
 
+  def rewrite_for_down_track(packet, %DownTrack{} = down_track) when is_struct(packet) do
+    dest_pt = down_track.destination_pt
+    dest_ssrc = down_track.destination_ssrc
+
+    # When packet is an ExRTP.Packet with nested :header
+    if Map.has_key?(packet, :header) and is_map(packet.header) do
+      new_header = %{packet.header | payload_type: dest_pt, ssrc: dest_ssrc}
+      {:ok, %{packet | header: new_header}}
+    else
+      # Flat packet structure
+      new_packet =
+        packet
+        |> Map.put(:payload_type, dest_pt)
+        |> Map.put(:ssrc, dest_ssrc)
+
+      {:ok, new_packet}
+    end
+  rescue
+    _ -> {:ok, packet}
+  end
+
   def rewrite_for_down_track(_invalid_packet, _down_track) do
     {:error, :invalid_rtp_packet}
+  end
+
+  @doc """
+  Convenience remapper returning the rewritten packet directly.
+  """
+  def remap_packet(packet, %DownTrack{} = down_track) do
+    case rewrite_for_down_track(packet, down_track) do
+      {:ok, remapped} -> remapped
+      _ -> packet
+    end
   end
 end

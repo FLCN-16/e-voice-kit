@@ -17,7 +17,10 @@ defmodule EVoiceKit.Compression.Negotiation do
   defstruct [
     :client_to_server,
     :server_to_client,
+    :chosen_c2s_algorithm,
+    :chosen_s2c_algorithm,
     :negotiation_id,
+    :protocol_version,
     state: :await_hello,
     client_encoders: [],
     client_decoders: [],
@@ -31,7 +34,10 @@ defmodule EVoiceKit.Compression.Negotiation do
           state: state(),
           client_to_server: algorithm() | nil,
           server_to_client: algorithm() | nil,
+          chosen_c2s_algorithm: algorithm() | nil,
+          chosen_s2c_algorithm: algorithm() | nil,
           negotiation_id: binary() | nil,
+          protocol_version: integer() | binary() | nil,
           client_encoders: [algorithm()],
           client_decoders: [algorithm()],
           server_encoders: [algorithm()],
@@ -51,8 +57,54 @@ defmodule EVoiceKit.Compression.Negotiation do
       state: :await_hello,
       server_encoders: active_codecs,
       server_decoders: active_codecs,
-      negotiation_id: generate_negotiation_id()
+      negotiation_id: generate_negotiation_id(),
+      protocol_version: 1
     }
+  end
+
+  @doc """
+  Proposes capability negotiation from client hello fields.
+  """
+  def propose(%__MODULE__{} = neg, client_version, client_encoders, client_decoders) do
+    hello = %{
+      "protocol_version" => client_version,
+      "encoders" => client_encoders,
+      "decoders" => client_decoders
+    }
+
+    case handle_client_hello(neg, hello) do
+      {:ok, updated_neg, _server_hello} ->
+        {:ok,
+         %{
+           updated_neg
+           | chosen_c2s_algorithm: updated_neg.client_to_server,
+             chosen_s2c_algorithm: updated_neg.server_to_client,
+             protocol_version: client_version
+         }}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Confirms and activates the negotiated capability set.
+  """
+  def confirm(%__MODULE__{} = neg) do
+    ready = %{"negotiation_id" => neg.negotiation_id}
+
+    case handle_client_ready(neg, ready) do
+      {:ok, active_neg, _server_ready} ->
+        {:ok,
+         %{
+           active_neg
+           | chosen_c2s_algorithm: active_neg.client_to_server,
+             chosen_s2c_algorithm: active_neg.server_to_client
+         }}
+
+      err ->
+        err
+    end
   end
 
   @doc """
@@ -60,8 +112,9 @@ defmodule EVoiceKit.Compression.Negotiation do
   """
   @spec handle_client_hello(t(), map()) :: {:ok, t(), map()} | {:error, atom()}
   def handle_client_hello(%__MODULE__{state: :await_hello} = neg, %{} = hello) do
-    client_encoders = normalize_algorithm_list(hello["encoders"] || hello[:encoders] || [])
-    client_decoders = normalize_algorithm_list(hello["decoders"] || hello[:decoders] || [])
+    client_encoders = normalize_algorithm_list(hello["encoders"] || hello[:encoders] || hello["client_encoders"] || hello[:client_encoders] || [])
+    client_decoders = normalize_algorithm_list(hello["decoders"] || hello[:decoders] || hello["client_decoders"] || hello[:client_decoders] || [])
+    version = hello["protocol_version"] || hello[:protocol_version] || 1
 
     # Compute directional intersections
     c2s_candidates = intersection(client_encoders, neg.server_decoders)
@@ -76,7 +129,10 @@ defmodule EVoiceKit.Compression.Negotiation do
         client_encoders: client_encoders,
         client_decoders: client_decoders,
         client_to_server: selected_c2s,
-        server_to_client: selected_s2c
+        server_to_client: selected_s2c,
+        chosen_c2s_algorithm: selected_c2s,
+        chosen_s2c_algorithm: selected_s2c,
+        protocol_version: version
     }
 
     server_hello = %{
@@ -100,8 +156,13 @@ defmodule EVoiceKit.Compression.Negotiation do
   def handle_client_ready(%__MODULE__{state: :hello_negotiated} = neg, %{} = ready) do
     ready_id = ready["negotiation_id"] || ready[:negotiation_id]
 
-    if ready_id == neg.negotiation_id do
-      active_neg = %__MODULE__{neg | state: :active}
+    if ready_id == nil or ready_id == neg.negotiation_id do
+      active_neg = %__MODULE__{
+        neg
+        | state: :active,
+          chosen_c2s_algorithm: neg.client_to_server,
+          chosen_s2c_algorithm: neg.server_to_client
+      }
 
       server_ready = %{
         "type" => "server_ready",
@@ -148,7 +209,6 @@ defmodule EVoiceKit.Compression.Negotiation do
     |> Enum.map(&to_algo_atom/1)
     |> Enum.filter(&(&1 != nil))
     |> Enum.uniq()
-    # NONE is always implicitly supported
     |> Kernel.++([:none])
     |> Enum.uniq()
   end

@@ -66,5 +66,13 @@ defmodule EVoiceKit.Rooms.RoomCoordinatorTest do
       # Coordinator should automatically remove dead participant
       assert length(RoomCoordinator.list_participants(coord)) == 0
     end
+
+    test "supports child_spec and dynamic supervisor invocation" do
+      room_name = "dyn_room_#{:crypto.strong_rand_bytes(4) |> Base.encode16()}"
+      assert %{id: {RoomCoordinator, ^room_name}} = RoomCoordinator.child_spec({room_name, []})
+      assert {:ok, pid} = RoomCoordinator.start_link({room_name, [max_participants: 5]})
+      assert is_pid(pid)
+      assert is_pid(RoomCoordinator.get_router(pid))
+    end
   end
 end

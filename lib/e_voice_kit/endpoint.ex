@@ -171,28 +171,59 @@ defmodule EVoiceKit.Endpoint do
   # Fallback 404
   # Native WebRTC SFU Signaling WebSocket Endpoint
   get "/rtc/v1" do
+    token = conn.query_params["token"]
+
     conn
-    |> WebSockAdapter.upgrade(EVoiceKit.Signaling.WebSocket, [], timeout: :infinity)
+    |> WebSockAdapter.upgrade(EVoiceKit.Signaling.WebSocket, [token: token], timeout: :infinity)
     |> halt()
   end
 
   # Token Generation Endpoint for WebRTC Room Connection
   post "/rtc/v1/token" do
+    tenant_id = conn.body_params["tenant_id"] || "default"
     room = conn.body_params["room"] || "default"
-    identity = conn.body_params["identity"] || ("user_" <> (:crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower)))
-    ticket = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    identity =
+      conn.body_params["identity"] ||
+        ("user_" <> (:crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower)))
 
-    response = %{
-      "token" => ticket,
+    permissions =
+      conn.body_params["permissions"] ||
+        %{
+          "can_publish" => true,
+          "can_subscribe" => true,
+          "can_publish_data" => true
+        }
+
+    ttl = conn.body_params["ttl"] || 3600
+
+    claims = %{
+      "tenant_id" => tenant_id,
       "room" => room,
       "identity" => identity,
-      "ws_url" => "/rtc/v1",
-      "expires_in" => 300
+      "permissions" => permissions
     }
 
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, Jason.encode!(response))
+    case EVoiceKit.Auth.Token.generate(claims, ttl: ttl) do
+      {:ok, token} ->
+        response = %{
+          "token" => token,
+          "tenant_id" => tenant_id,
+          "room" => room,
+          "identity" => identity,
+          "permissions" => permissions,
+          "ws_url" => "/rtc/v1?token=" <> URI.encode_www_form(token),
+          "expires_in" => ttl
+        }
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(response))
+
+      {:error, reason} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(500, Jason.encode!(%{"error" => "token_generation_failed", "details" => inspect(reason)}))
+    end
   end
 
   # Fallback 404
