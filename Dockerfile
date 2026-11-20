@@ -1,9 +1,9 @@
-# ==========================================
+﻿# ==========================================
 # Build Stage
 # ==========================================
 FROM hexpm/elixir:1.16.2-erlang-26.2.3-alpine-3.19.1 AS build
 
-RUN apk add --no-cache build-base git
+RUN apk add --no-cache build-base git rust cargo
 
 WORKDIR /app
 

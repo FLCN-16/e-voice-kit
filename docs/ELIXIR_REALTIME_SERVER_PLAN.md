@@ -83,8 +83,8 @@ The following assessment is based on the code and documentation in the develop b
 ### 3.1 Current project baseline
 
 - The project is an Elixir application currently declaring Elixir ~> 1.15.
-- The application uses Bandit, WebSockAdapter, Finch, Jason, Msgpax, WebSockex, Telemetry and CorsPlug.
-- ExWebRTC is not currently a dependency.
+- The application runtime dependencies have been updated to their latest verified Hex releases: Bandit (~> 1.15), WebSockAdapter (~> 0.7), Finch (~> 0.25), Jason (~> 1.4), Msgpax (~> 2.4), WebSockex (~> 0.5.1), Telemetry (~> 1.4), and CorsPlug (~> 3.0).
+- ExWebRTC (~> 0.18.0), ExSCTP (~> 0.1.3), ezstd (~> 1.2.5), and brotli (~> 0.3.4) are declared for the native SFU media server on branch `feat/elixir-realtime-server`.
 - The supervision tree currently includes the session Registry, Finch, Task.Supervisor, the call Session DynamicSupervisor and Bandit.
 - Docker Compose currently defines E-Voice-Kit and PostgreSQL. It does not define a LiveKit-compatible SFU, Redis or Coturn.
 - Existing Pipeline.Session assumes a transport process and uses telephony-oriented μ-law audio messages.

@@ -1,4 +1,4 @@
-defmodule EVoiceKit.MixProject do
+﻿defmodule EVoiceKit.MixProject do
   use Mix.Project
 
   def project do
@@ -30,22 +30,31 @@ defmodule EVoiceKit.MixProject do
 
   defp deps do
     [
-      # Modern, high-performance HTTP & WebSocket server (Bandit)
-      {:bandit, "~> 1.14"},
-      # WebSocket adapter for Plug / Bandit
+      # Modern, high-performance HTTP & WebSocket server (Bandit 1.15.0)
+      {:bandit, "~> 1.15"},
+      # WebSocket adapter for Plug / Bandit (0.7.2)
       {:websock_adapter, "~> 0.7"},
-      # Fast HTTP/1.1 and HTTP/2 client with connection pooling
-      {:finch, "~> 0.24"},
-      # High performance JSON library
+      # Fast HTTP/1.1 and HTTP/2 client with connection pooling (0.25.0)
+      {:finch, "~> 0.25"},
+      # High performance JSON library (1.4.4)
       {:jason, "~> 1.4"},
-      # High performance MessagePack (used by Fish Audio WebSocket)
+      # High performance MessagePack (used by Fish Audio WebSocket) (2.4.0)
       {:msgpax, "~> 2.4"},
-      # Outbound WebSocket client (for Deepgram, ElevenLabs, Fish Audio, NestJS bridge)
+      # Outbound WebSocket client (for Deepgram, ElevenLabs, Fish Audio, NestJS bridge) (0.5.1)
       {:websockex, "~> 0.5.1"},
-      # Telemetry instrumentation
+      # Telemetry instrumentation (1.4.3)
       {:telemetry, "~> 1.4"},
-      # CORS support for browser WebSockets
-      {:cors_plug, "~> 3.0"}
+      # CORS support for browser WebSockets (3.0.3)
+      {:cors_plug, "~> 3.0"},
+
+      # Real-Time Media & SFU WebRTC primitives (ExWebRTC 0.18.0)
+      {:ex_webrtc, "~> 0.18.0"},
+      # WebRTC DataChannels over SCTP (0.1.3, optional - requires Rust build toolchain)
+      {:ex_sctp, "~> 0.1.3", optional: true},
+
+      # Application-layer compression codecs (patched against CVEs)
+      {:ezstd, "~> 1.2.5"},
+      {:brotli, "~> 0.3.4"}
     ]
   end
 end
