@@ -1,9 +1,9 @@
-﻿# E-Voice-Kit: Native Elixir Real-Time Media Server Plan
+# E-Voice-Kit: Native Elixir Real-Time Media Server Plan
 
 > Status: Active Implementation — Gate 0 / Phase 0 in progress  
-> Branch: `feat/elixir-realtime-server` (branched from `feat/elixir-realtime-server`)  
+> Branch: `feat/elixir-realtime-server` (branched from `develop`)  
 > Prepared / Updated: 2026-11-20  
-> Repository baseline: `feat/elixir-realtime-server` branch  
+> Repository baseline: `develop` branch  
 > Companion Technical Design: [ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md) (Deep Technical Reference, 37 sections)  
 > Architecture Decisions: [docs/adr/](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/README.md)  
 > Scope: Live implementation plan, architectural decision tracking, and technical roadmap execution.

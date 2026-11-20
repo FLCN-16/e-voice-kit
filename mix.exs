@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.MixProject do
+defmodule EVoiceKit.MixProject do
   use Mix.Project
 
   def project do

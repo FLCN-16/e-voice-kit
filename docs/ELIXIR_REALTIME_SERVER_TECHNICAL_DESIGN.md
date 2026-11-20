@@ -1,4 +1,4 @@
-﻿# E-Voice-Kit Native Elixir Real-Time Server
+# E-Voice-Kit Native Elixir Real-Time Server
 ## Deep Technical Design and Engineering Reference
 
 > Document type: Detailed technical design / implementation reference  

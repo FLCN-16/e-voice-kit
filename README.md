@@ -1,10 +1,33 @@
-# E-Voice-Kit (Elixir / BEAM)
+<div align="center">
 
-The ultra-low-latency, 100% pure Elixir real-time Voice AI platform.
+# E-Voice-Kit
 
-Built on the Erlang BEAM virtual machine, E-Voice-Kit delivers sub-800ms turn latency, sub-50ms barge-in interruptions, and handles tens of thousands of concurrent telephone calls on a single node.
+### Ultra-Low-Latency Real-Time WebRTC Media Server & Voice AI Gateway for Elixir / BEAM
 
-It can run as a **completely self-contained, standalone Voice AI agent** (with built-in streaming LLM inference, sentence chunking, tool calling, and speech processing) or connect to an external microservice backend via duplex WebSocket IPC.
+[![CI](https://github.com/FLCN-16/e-voice-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/FLCN-16/e-voice-kit/actions/workflows/ci.yml)
+[![Hex.pm](https://img.shields.io/badge/hex.pm-v1.0.0-blue.svg)](https://hex.pm/packages/e_voice_kit)
+[![Elixir](https://img.shields.io/badge/Elixir-~%3E%201.15-purple.svg)](https://elixir-lang.org/)
+[![Erlang/OTP](https://img.shields.io/badge/Erlang%2FOTP-26%20%7C%2027-red.svg)](https://www.erlang.org/)
+[![WebRTC](https://img.shields.io/badge/WebRTC-ExWebRTC%200.18-blue.svg)](https://hex.pm/packages/ex_webrtc)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+<p align="center">
+  A high-performance real-time media server and conversational Voice AI edge gateway built on the Erlang BEAM virtual machine. Combines a native Selective Forwarding Unit (SFU) with sub-50ms barge-in interruptions, directional application compression, WebRTC DataChannels, and carrier-grade telephony ingress.
+</p>
+
+</div>
+
+---
+
+## Key Capabilities
+
+* **Native Elixir WebRTC SFU:** Live selective media forwarding for audio and video powered by ExWebRTC. Multi-party room routing without server-side transcoding bottlenecks.
+* **Multiplexed 28-Byte Binary Framing (`EVK1`):** Custom high-efficiency application envelope for WebSocket signaling and WebRTC DataChannels with strict memory caps and decompression-bomb safeguards.
+* **Directional Capability Negotiation:** Independent directional negotiation of compression algorithms (`Zstandard`, `Brotli`, `Gzip`, `NONE`) based on client-advertised encoder/decoder capabilities.
+* **Multi-Party Room & Participant Isolation:** OTP-supervised room coordinators and isolated participant sessions. Individual participant disconnects or failures never crash the room.
+* **First-Class AI Room Participants:** Voice AI agents join rooms, consume multi-party audio, stream STT/LLM inference, and publish synthesized speech directly into room tracks.
+* **Carrier & PSTN Gateway Integration:** Bi-directional bridge for Twilio, Telnyx, Vonage, and SIP trunks into WebRTC conference rooms.
+* **Sub-50ms Barge-In:** Instant audio queue flushing and turn cancellation upon caller speech interruption.
 
 ---
 
@@ -35,54 +58,62 @@ It can run as a **completely self-contained, standalone Voice AI agent** (with b
 
 ## Architecture Overview
 
-```
-Telephony (Twilio / Telnyx / Vonage / SIP)
-          │  (WebSocket G.711 μ-law)
-          ▼
-    EVoiceKit.Endpoint
-          │
-          ▼
-EVoiceKit.Transports.TwilioWebSocket / TelnyxWebSocket / VonageWebSocket
-          │
-          ▼ (dynamic spawn per call)
-EVoiceKit.Pipeline.Session (GenServer per live call)
-    ├── Clients.STTStreamer (Pluggable STT Dispatcher)
-    │     ├── Clients.DeepgramSTT
-    │     ├── Clients.AssemblyAISTT
-    │     ├── Clients.SarvamSTT
-    │     └── Clients.WhisperSTT
-    ├── LLM.Agent (Built-in Pure Elixir Conversational Brain)
-    │     ├── Task (Finch HTTP/2 SSE Streaming)
-    │     ├── LLM.SentenceChunker (Clause & Sentence Tokenizer)
-    │     └── LLM.Tools (Concurrent Function Calling & Telephony Actions)
-    ├── Clients.TTSStreamer (Pluggable TTS Dispatcher)
-    │     ├── Clients.Cartesia
-    │     ├── Clients.ElevenLabsTTS
-    │     ├── Clients.FishAudioTTS
-    │     ├── Clients.SarvamTTS
-    │     └── Clients.OpenAITTS
-    └── Clients.BrainBridge (Optional Duplex IPC for external backends)
+```text
+                                 EVoiceKit.Endpoint
+             ┌───────────────────────────┼───────────────────────────┐
+             │ (Telephony Media Streams) │ (Native WebRTC Signaling) │ (Connection Auth)
+             ▼                           ▼                           ▼
+      /media/{carrier}                /rtc/v1                   /rtc/v1/token
+             │                           │
+             ▼                           ▼
+[Telephony Gateway Plane]       [WebRTC SFU Media Plane]
+Pipeline.SessionSupervisor      Rooms.RoomDynamicSupervisor
+  └── Pipeline.Session            └── Rooms.RoomCoordinator (1 per room)
+        ├── STTStreamer                 ├── Signaling.Session (1 per participant)
+        │     ├── Deepgram              ├── RTC.PeerConnectionOwner (DTLS-SRTP / ICE)
+        │     └── AssemblyAI            ├── SFU.Router (RTP Packet Fan-Out & Rewriting)
+        ├── LLM.Agent                   │     ├── UpTrack (Publisher Ingress)
+        │     ├── SentenceChunker       │     └── DownTrack (Subscriber Egress)
+        │     └── Tools                 ├── DataChannels.Relay (Multiplexed Data)
+        └── TTSStreamer                 ├── VoiceAI.Participant (AI Room Participant)
+              ├── Cartesia              └── SIP.RoomAdapter (PSTN / SIP Call Leg Bridge)
+              └── ElevenLabs
 ```
 
-### Key Modules:
+### Key Modules
+
+#### Native WebRTC SFU & Real-Time Media Plane
+* **`EVoiceKit.Compression.Envelope`**: Fixed 28-byte binary framing protocol (`EVK1`) for signaling multiplexing, length pre-validation, and decompression-bomb protection.
+* **`EVoiceKit.Compression.Negotiation`**: Directional capability negotiation for `Zstandard`, `Brotli`, `Gzip`, and `NONE`.
+* **`EVoiceKit.Signaling.Session`**: Stateful signaling session managing capability handshakes, authentication, and room attachment.
+* **`EVoiceKit.Rooms.RoomCoordinator`**: Multi-party room coordinator managing participant admission, presence, track metadata, and fault-isolated lifecycles.
+* **`EVoiceKit.SFU.Router`**: Central selective forwarding unit fanning out RTP packets asynchronously to subscriber DownTracks.
+* **`EVoiceKit.SFU.PacketMapper`**: High-performance 12-byte RTP fixed header rewriting and SSRC/PT translation.
+* **`EVoiceKit.RTC.PeerConnectionOwner`**: Manages WebRTC PeerConnection state, SDP offer/answer exchange, and ICE candidates.
+* **`EVoiceKit.VoiceAI.Participant`**: First-class room participant representation enabling AI agents to subscribe to user audio and publish synthesized speech.
+* **`EVoiceKit.SIP.RoomAdapter`**: Bridges external PSTN / SIP trunks directly into multi-party WebRTC rooms.
+
+#### Telephony Gateway & Conversational Brain
 * **`EVoiceKit.Codec.G711`**: Native Elixir binary pattern-matching decoder/encoder for 8kHz μ-law (PCMU) to 16-bit linear PCM. Zero external C dependencies.
-* **`EVoiceKit.Pipeline.Session`**: State machine managing turn boundaries, conversational fillers, and sub-50ms barge-in interruptions.
+* **`EVoiceKit.Pipeline.Session`**: State machine managing telephony call turns, conversational fillers, and sub-50ms barge-in interruptions.
 * **`EVoiceKit.Pipeline.Buffer`**: Frame packetizer for 20ms (160-byte) audio streaming with instant flush capabilities.
-* **`EVoiceKit.Transports.TwilioWebSocket`**: Inbound WebSocket handler compatible with Twilio Media Streams.
-* **`EVoiceKit.Transports.TelnyxWebSocket`**: Inbound WebSocket handler compatible with Telnyx Media Streams.
-* **`EVoiceKit.Transports.VonageWebSocket`**: Inbound WebSocket handler compatible with Vonage Voice WebSockets.
-* **`EVoiceKit.Transports.SIPCarrier`**: SIP/RTP trunk handler for private PBX / carrier BYO trunks.
+* **`EVoiceKit.Transports.WebSocketCarrier`**: Base carrier implementation for Twilio, Telnyx, and Vonage media streams.
+* **`EVoiceKit.Transports.SIPCarrier`**: SIP/RTP carrier trunk handler.
 * **`EVoiceKit.Clients.BrainBridge`**: Duplex WebSocket bridge communicating with external LangChain / NestJS agents.
 
 ---
 
 ## Latest Packages Used (`mix.exs`)
-* **Bandit** (`~> 1.14`): Modern, high-performance HTTP/1.1, HTTP/2, and WebSocket server.
-* **WebSockAdapter** (`~> 0.7`): WebSocket adapter for Plug and Bandit.
-* **Finch** (`~> 0.24`): High-throughput HTTP client with connection pooling.
-* **WebSockex** (`~> 0.5.1`): Outbound WebSocket client for external real-time speech APIs.
+* **Bandit** (`~> 1.15`): Modern, high-performance HTTP/1.1, HTTP/2, and WebSocket server (latest: `1.15.0`).
+* **WebSockAdapter** (`~> 0.7`): WebSocket adapter for Plug and Bandit (latest: `0.7.2`).
+* **Finch** (`~> 0.25`): High-throughput HTTP client with connection pooling (latest: `0.25.0`).
+* **ExWebRTC** (`~> 0.18.0`): WebRTC SFU primitives (ICE, DTLS, SRTP, RTP, RTCP) (latest: `0.18.0`).
+* **ExSCTP** (`~> 0.1.3`): Optional WebRTC DataChannel support over SCTP (latest: `0.1.3`).
+* **ezstd** (`~> 1.2.5`): High-speed Zstandard compression NIF, security-patched against CVE-2026-119434.
+* **brotli** (`~> 0.3.4`): Brotli stream compression NIF, security-patched against EEF-CVE-2026-111497.
 * **Jason** (`~> 1.4`): Optimized JSON parser.
 * **Msgpax** (`~> 2.4`): High-performance MessagePack codec.
+* **WebSockex** (`~> 0.5.1`): Outbound WebSocket client for external real-time speech APIs.
 * **Telemetry** (`~> 1.4`): Performance monitoring & metrics.
 * **CorsPlug** (`~> 3.0`): CORS middleware for browser clients.
 
@@ -212,8 +243,11 @@ E-Voice-Kit resolves multi-tenancy and assistant configuration across all channe
 2. **Direct SIP Trunks (RFC 3261):**
    * SIP URI matching (`sip:+18005550199@gateway.domain.com`) or custom SIP headers (`X-Tenant-Id: tenant_acme`).
 
-3. **Web / In-App Browser Calls:**
-   * Ephemeral signed JWT tokens passed via query string: `wss://gateway.domain.com/media/web?token=eyJhbGci...`.
+3. **Web / In-App Browser & WebRTC Multi-Party Rooms:**
+   * Participants request a short-lived connection ticket: `POST /rtc/v1/token` with `{"room": "room_name", "identity": "user_id"}`.
+   * Connect via native WebSocket: `wss://gateway.domain.com/rtc/v1`.
+   * Signaling and DataChannels use the 28-byte `EVK1` binary envelope with directional Brotli, Gzip, and Zstandard compression.
+   * An interactive test client is available in [`test/fixtures/browser_client.html`](test/fixtures/browser_client.html).
 
 4. **External Brain Bridge Handshake:**
    * Elixir opens `/voice-bridge?tenant_id=...&assistant_id=...&call_id=...`.
@@ -223,8 +257,11 @@ E-Voice-Kit resolves multi-tenancy and assistant configuration across all channe
 
 ## 📚 Documentation Suite
 
-Comprehensive guides are available in the [`docs/`](docs/) directory:
+Comprehensive guides and architectural specifications are available in the [`docs/`](docs/) directory:
 
+* [**E-Voice-Kit Real-Time Media Server Plan**](docs/ELIXIR_REALTIME_SERVER_PLAN.md): Implementation plan and active execution backlog for native Elixir SFU real-time communication.
+* [**Deep Technical Design & Engineering Reference**](docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md): Comprehensive 37-section architectural reference covering WebRTC, compression, process ownership, and SFU forwarding.
+* [**Architecture Decision Records (ADRs)**](docs/adr/README.md): Index and specifications for all 14 accepted architectural decisions (ADR-0001 through ADR-0014).
 * [**Pluggable Carrier Transports & Base Class**](docs/carrier-transports.md): How to use `EVoiceKit.Transports.WebSocketCarrier` to implement new carriers (Twilio, Telnyx, Vonage, SIP) in minutes.
 * [**Native Pure Elixir LLM Agent**](docs/native-llm-agent.md): In-depth guide to the pure Elixir LLM engine, sentence chunking, fillers, and tool execution.
 * [**System Overview**](docs/overview.md): High-level feature set and why Elixir on BEAM is ideal for voice AI.
