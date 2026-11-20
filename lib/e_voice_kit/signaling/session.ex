@@ -420,7 +420,16 @@ defmodule EVoiceKit.Signaling.Session do
     msg_type = Protocol.msg_type(msg_type_atom)
     {:ok, json_bytes} = Jason.encode(payload_map)
 
-    case BoundedEncoder.encode(json_bytes, state.negotiation, message_type: msg_type, request_id: req_id) do
+    outbound_algorithm =
+      case state.negotiation do
+        %Negotiation{state: :active, server_to_client: algorithm} when is_atom(algorithm) ->
+          algorithm
+
+        _ ->
+          :none
+      end
+
+    case BoundedEncoder.encode(json_bytes, outbound_algorithm, msg_type, request_id: req_id) do
       {:ok, %Envelope{} = env} -> Envelope.encode(env)
       err -> err
     end
