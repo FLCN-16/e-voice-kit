@@ -262,6 +262,8 @@ defmodule EVoiceKit.Compression.EnvelopeTest do
     end
 
     test "rejects wire length exceeding max limit" do
+      large_payload = :binary.copy("a", 500)
+
       large_wire = <<
         "EVK1",
         1::8,
@@ -273,7 +275,7 @@ defmodule EVoiceKit.Compression.EnvelopeTest do
         500::32,
         500::32,
         0::64,
-        :binary.copy(<<"a">>, 500)
+        large_payload::binary
       >>
 
       assert {:error, :wire_length_exceeded} =
