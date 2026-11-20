@@ -1,9 +1,12 @@
 ﻿# E-Voice-Kit: Native Elixir Real-Time Media Server Plan
 
-> Status: Research-backed implementation plan — awaiting architecture decisions  
-> Prepared: 2026-11-20  
-> Repository baseline: develop branch  
-> Scope: Documentation only. This plan does not change runtime code or dependencies.
+> Status: Active Implementation — Gate 0 / Phase 0 in progress  
+> Branch: `feat/elixir-realtime-server` (branched from `feat/elixir-realtime-server`)  
+> Prepared / Updated: 2026-11-20  
+> Repository baseline: `feat/elixir-realtime-server` branch  
+> Companion Technical Design: [ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md) (Deep Technical Reference, 37 sections)  
+> Architecture Decisions: [docs/adr/](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/README.md)  
+> Scope: Live implementation plan, architectural decision tracking, and technical roadmap execution.
 
 ## 1. Executive summary
 
@@ -62,16 +65,14 @@ No capacity, latency or production-readiness claim should be made until this ver
 
 ### 2.3 Product modes to keep explicit
 
-The architecture should separate these two possible protocol products:
+The architecture separates these two protocol products:
 
 | Mode | Description | Compatibility impact |
 |---|---|---|
 | Native E-Voice protocol | A versioned protocol designed for this server, including Brotli/gzip/Zstd capability negotiation | Requires our own browser/mobile SDKs or client adapters |
 | LiveKit-compatible protocol | Implements the relevant LiveKit signaling messages, semantics, connection behavior and compression behavior | Existing LiveKit SDKs may connect only after protocol-level interoperability is demonstrated |
 
-**Recommendation:** keep the internal room/participant/track/SFU model independent of either wire protocol. Implement the native protocol for the first vertical slice unless the project owner explicitly makes unmodified LiveKit SDK compatibility a release-one requirement. Add a compatibility protocol adapter as a separately tested mode.
-
-This is an unresolved architecture decision and must not be silently treated as settled.
+**Architecture Decision (ADR-0001):** The internal room/participant/track/SFU domain model is strictly independent of either wire protocol. We adopt the Native E-Voice protocol as the baseline target for Release 1 and Milestone 1. LiveKit SDK compatibility will be delivered as a separately tested compatibility adapter mode (`EVoiceKit.Signaling.LiveKitAdapter`). See [ADR-0001](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0001-native-elixir-sfu-architecture-and-protocol.md).
 
 ---
 
@@ -212,14 +213,15 @@ Research these Erlang ecosystem options before selecting a SIP foundation:
 
 ### 5.2 Process ownership and OTP supervision
 
-The initial single-node architecture should use supervisors and process boundaries with explicit ownership.
+The initial single-node architecture uses supervisors and process boundaries with explicit ownership, aligned with Section 6.2 and Section 33 of [ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md).
 
-Suggested logical tree:
+Supervision tree and module hierarchy:
 
 ~~~text
 EVoiceKit.Application
 ├── EVoiceKit.ConnectionRegistry
 ├── EVoiceKit.RoomRegistry
+├── EVoiceKit.TenantPolicyCache
 ├── EVoiceKit.RoomDynamicSupervisor
 │   └── EVoiceKit.RoomSupervisor (one per room)
 │       ├── EVoiceKit.RoomCoordinator
@@ -228,20 +230,36 @@ EVoiceKit.Application
 │       │       ├── EVoiceKit.SignalingSession
 │       │       └── EVoiceKit.PeerConnectionOwner (one per PeerConnection)
 │       ├── EVoiceKit.TrackRegistry
-│       └── EVoiceKit.SubscriptionManager
+│       ├── EVoiceKit.SubscriptionManager
+│       └── EVoiceKit.RoomEventDispatcher
 ├── EVoiceKit.MediaSupervisor
-│   ├── EVoiceKit.ForwarderSupervisor
+│   ├── EVoiceKit.TrackForwarderSupervisor
 │   ├── EVoiceKit.RetransmissionSupervisor
-│   └── EVoiceKit.MediaWorkerPool
+│   ├── EVoiceKit.MediaConsumerSupervisor
+│   └── EVoiceKit.PacketWorkerPool
 ├── EVoiceKit.CompressionSupervisor
+│   └── EVoiceKit.CompressionWorkerPool
 ├── EVoiceKit.SIPSupervisor
 ├── EVoiceKit.AgentSessionSupervisor
+├── EVoiceKit.RecordingSupervisor
 ├── EVoiceKit.TaskSupervisor
 ├── Finch
 └── Bandit
 ~~~
 
-This tree is conceptual. Exact process boundaries should follow the ExWebRTC ownership model discovered during Phase 0.
+Module namespace mapping (see Technical Design Section 33):
+- `EVoiceKit.Compression`: `Envelope`, `Algorithm`, `BoundedDecoder`, `BoundedEncoder`, codecs (`none`, `gzip`, `brotli`, `zstd`)
+- `EVoiceKit.Signaling`: `WebSocket`, `Session`, `Dispatcher`, `RequestRegistry`, `Reconnect`
+- `EVoiceKit.Rooms`: `Room`, `RoomSupervisor`, `RoomCoordinator`, `Registry`, `Events`
+- `EVoiceKit.Participants`: `Participant`, `Session`, `Permissions`, `Lifecycle`
+- `EVoiceKit.RTC`: `PeerConnectionOwner`, `PeerConnectionSupervisor`, `SDP`, `ICE`, `DTLS`, `TransportState`, `Stats`
+- `EVoiceKit.SFU`: `Router`, `TrackRegistry`, `UpTrack`, `DownTrack`, `Subscription`, `Forwarder`, `PacketMapper`, `Retransmission`, `CongestionControl`, `LayerSelector`
+- `EVoiceKit.Media`: `Frame`, `Audio`, `Video`, `Codecs`, `Consumers`, `Recording`, `Egress`
+- `EVoiceKit.DataChannels`: `Registry`, `Relay`, `Policy`, `Limits`
+- `EVoiceKit.VoiceAI`: `AgentSession`, `Participant`, `VAD`, `STT`, `TTS`
+- `EVoiceKit.SIP`: `Transport`, `Parser`, `Serializer`, `Transaction`, `Dialog`, `UserAgent`, `SDP`, `RTP`, `DTMF`, `RoomAdapter`
+- `EVoiceKit.Distributed`: `Cluster`, `RoomAllocator`, `RoomLease`, `NodeHealth`, `Drain`
+- `EVoiceKit.Telemetry`: `Events`, `Metrics`, `Redaction`
 
 **Critical performance rule:** the RoomCoordinator is a control-plane owner. It must not receive a synchronous GenServer call for every RTP packet and must not serialize the media path. Track routing must have a bounded, low-latency path with bounded mailboxes/queues and explicit overload behavior.
 
@@ -266,11 +284,9 @@ Do not conflate a participant, a PeerConnection, a track and an AI session. They
 
 ### 5.4 PeerConnection topology
 
-The native protocol should initially select the simplest topology supported by the browser SDK and the ExWebRTC proof of concept. A single Unified Plan PeerConnection per participant may be sufficient for the first native client.
+**Architecture Decision (ADR-0003):** The native protocol establishes a single Unified Plan PeerConnection per participant for both publishing and subscribing tracks. Dynamic track publication and subscription are renegotiated via transceivers (`sendrecv`, `sendonly`, `recvonly`) with MID matching. 
 
-Do not assume this topology is wire-compatible with LiveKit. LiveKit documents a signaling/client protocol where a client may establish separate publisher and subscriber PeerConnections. If LiveKit compatibility is approved, implement and test the required topology in the compatibility adapter.
-
-Record the choice in an ADR after the proof of concept.
+LiveKit SDK compatibility mode uses a dual-PeerConnection topology (separate publisher and subscriber PCs) handled inside `EVoiceKit.Signaling.LiveKitAdapter`. See [ADR-0003](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0003-unified-plan-webrtc-topology.md).
 
 ---
 
@@ -427,20 +443,33 @@ The final policy must be established with realistic benchmarks for each traffic 
 
 ### 7.4 Envelope
 
-Every compressed application message must identify enough metadata to be decoded safely and unambiguously. The envelope should contain:
+**Architecture Decision (ADR-0002):** Every application message on the signaling WebSocket and DataChannels carries a fixed 28-byte binary header (`EVK1`), as specified in Technical Design Section 10.2 and [ADR-0002](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0002-compression-binary-envelope-and-negotiation.md).
 
-- Envelope magic and version.
-- Message type and flags.
-- Compression algorithm ID (or explicit NONE).
-- Payload length on the wire.
-- Declared uncompressed length.
-- Optional request/correlation ID.
-- Payload bytes.
-- Optional checksum only where the selected format or protocol requires it; transport security must not be confused with a checksum.
+All integer fields use unsigned big-endian (network byte order).
 
-Lengths must be validated before decompression. The protocol must reject malformed, inconsistent or unsupported envelopes.
+| Offset | Size | Field | Type / Meaning |
+|---:|---:|---|---|
+| 0 | 4 | Magic | ASCII `EVK1` (`0x45, 0x56, 0x4B, 0x31`) |
+| 4 | 1 | Envelope version | `1` for this header layout |
+| 5 | 1 | Flags | Bit 0: compressed (`1`) or uncompressed (`0`); Bit 1: control (`1`) or data (`0`); Bits 2-7 reserved (`0`) |
+| 6 | 1 | Algorithm ID | `0` NONE, `1` GZIP, `2` BROTLI, `3` ZSTD |
+| 7 | 1 | Header length | `28` (bytes) |
+| 8 | 2 | Message type | 16-bit stable protocol message enum |
+| 10 | 2 | Reserved | `0x0000` (must be zero in V1) |
+| 12 | 4 | Wire payload length | Payload bytes following the 28-byte header |
+| 16 | 4 | Plain payload length | Expected uncompressed decoded bytes |
+| 20 | 8 | Request/correlation ID | 64-bit integer correlation ID (`0` if not applicable) |
+| 28 | N | Payload | Compressed or plain message body |
 
-The exact binary layout and Protobuf schema are a Phase 0/1 ADR. Do not implement undocumented magic offsets or implicit assumptions in client code.
+The WebSocket frame length must equal `28 + wire_payload_length`. Any discrepancy is rejected before decompression.
+
+Validation pipeline:
+1. Frame size check: at least 28 bytes; frame size == `28 + wire_payload_length`.
+2. Header check: magic `EVK1`, version `1`, reserved fields zero.
+3. Algorithm check: must match negotiated algorithm for the frame's direction.
+4. Hard caps: plain length <= max plain size limit (default 2 MiB), expansion ratio <= 15:1.
+5. Decompression: submit to bounded streaming decompressor; reject on truncation or limit breach.
+6. Decode check: decompressed byte count must exactly equal `plain_payload_length`.
 
 ### 7.5 Directionality and message policy
 
@@ -1229,39 +1258,66 @@ Exit criteria:
 
 ## 18. Required ADRs before implementation
 
-These decisions need explicit answers and should be recorded under docs/adr/ when approved:
+These decisions are formally recorded under [docs/adr/](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/README.md) and aligned with Section 35 of [ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md):
 
-1. Native E-Voice protocol only, or unmodified LiveKit SDK compatibility as a release-one requirement?
-2. Single Unified Plan PeerConnection or separate publisher/subscriber PeerConnections in the native topology?
-3. Signaling encoding: Protobuf-only, JSON bootstrap plus Protobuf, or another versioned format?
-4. Compression envelope exact binary layout and whether profiles are per direction only or per traffic class.
-5. Compression level/threshold policy, based on benchmark results.
-6. ExWebRTC DataChannel dependency and native build strategy.
-7. SIP stack choice: NkSIP, ersip-based integration, Parrot evaluation, or custom bounded SIP scope.
-8. Codec roadmap and H.264 licensing/deployment constraints.
-9. Room persistence and Redis coordination model.
-10. Recording and media retention/security model.
-
-Do not implement a decision that materially affects protocol compatibility without an ADR.
+1. **[ADR-0001](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0001-native-elixir-sfu-architecture-and-protocol.md): Native E-Voice protocol only, or unmodified LiveKit SDK compatibility as a release-one requirement?** — **[ACCEPTED]** (Native E-Voice protocol is baseline; LiveKit SDK wire compatibility isolated as a separate adapter mode).
+2. **[ADR-0002](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0002-compression-binary-envelope-and-negotiation.md): Exact binary envelope layout and message ID registry?** — **[ACCEPTED]** (Fixed 28-byte `EVK1` header; directional capability negotiation; bounded decompression).
+3. **[ADR-0003](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0003-unified-plan-webrtc-topology.md): Single Unified Plan PeerConnection or separate publisher/subscriber PeerConnections in native mode?** — **[ACCEPTED]** (Single Unified Plan PC per participant in native mode; dual-PC isolated to LiveKit adapter).
+4. **[ADR-0004](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0004-signaling-encoding-and-bootstrap.md): Signaling encoding: Protobuf-only, JSON bootstrap plus Protobuf, or another versioned format?** — **[PROPOSED]** (Uncompressed bootstrap handshake; Protobuf payload encoding with strict versioning).
+5. **[ADR-0005](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0005-compression-traffic-class-profiles.md): Directional algorithm selection only, or additional traffic-class profiles?** — **[PROPOSED]** (Directional baseline in V1; traffic-class profiles evaluated after microbenchmarks).
+6. **[ADR-0006](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0006-browser-compression-detection-and-wasm.md): Native browser codecs only or audited WASM fallbacks for Brotli/Zstandard?** — **[PROPOSED]** (MDN CompressionStream capability probing; NONE fallback; defer WASM).
+7. **[ADR-0007](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0007-exsctp-datachannel-build-strategy.md): ExSCTP DataChannel dependency and native Rust build strategy?** — **[PROPOSED]** (DataChannels optional in Phase 0; containerized Rust build pipeline).
+8. **[ADR-0008](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0008-track-forwarder-ownership-and-concurrency.md): Track/packet-forwarder process ownership after ExWebRTC 0.18 validation?** — **[PROPOSED]** (Isolate PeerConnectionOwner from RoomCoordinator; asynchronous packet forwarding).
+9. **[ADR-0009](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0009-sip-stack-selection-and-integration.md): SIP stack choice: NkSIP, ersip-based integration, Parrot evaluation, or custom bounded SIP scope?** — **[PROPOSED]** (Gated on RFC 3261 compliance and load tests).
+10. **[ADR-0010](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0010-video-codec-roadmap-and-licensing.md): First video codecs and H.264 distribution/licensing constraints?** — **[PROPOSED]** (VP8 and H.264 pass-through first; assess distribution licensing).
+11. **[ADR-0011](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0011-recording-storage-and-retention.md): Recording format, storage and media retention/security model?** — **[PROPOSED]** (Supervised recording consumer decoupled from forwarding fast-path).
+12. **[ADR-0012](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0012-multi-node-cluster-and-redis-coordination.md): Room persistence and Redis coordination model for multi-node?** — **[PROPOSED]** (Single-node authoritative room owner in Phase 1-6; Redis for cluster metadata in Phase 8).
+13. **[ADR-0013](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0013-tenant-quotas-and-abuse-controls.md): Tenant resource quotas, rate limiting and abuse defense?** — **[PROPOSED]** (Strict quotas on participants, tracks, SDP renegotiation, payload sizes).
+14. **[ADR-0014](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0014-compression-thresholds-and-scheduler-policy.md): Compression thresholds, levels, limits and scheduler behavior after benchmarks?** — **[PROPOSED]** (Minimum 512 B compression threshold; bounded decompression memory/reductions).
 
 ---
 
 ## 19. First implementation backlog
 
-The first code PR should be limited to a proof of concept and must not attempt the entire SFU:
+Active Work Tracker on branch `feat/elixir-realtime-server`:
 
-1. Add a separate experiment/application module or isolated test branch for ExWebRTC.
-2. Add a minimal authenticated browser signaling connection.
-3. Establish one PeerConnection and complete SDP/ICE negotiation.
-4. Receive a browser Opus RTP track.
-5. Inspect RTP/RTCP events and stats.
-6. Create a second PeerConnection and forward the received packet to a subscriber.
-7. Verify actual browser playout and teardown.
-8. Add a compression microbenchmark separate from the media test.
-9. Verify uncompressed ClientHello/ServerHello and one round-trip per compression algorithm.
-10. Add network impairment and participant crash tests.
+### Work Package 1: ADR Formalization & Specification Lock
+- [x] Create `docs/adr/` register ([ADR Index](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/README.md))
+- [x] Document and accept [ADR-0001](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0001-native-elixir-sfu-architecture-and-protocol.md) (Native E-Voice Protocol Baseline)
+- [x] Document and accept [ADR-0002](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0002-compression-binary-envelope-and-negotiation.md) (28-byte `EVK1` Binary Envelope)
+- [x] Document and accept [ADR-0003](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0003-unified-plan-webrtc-topology.md) (Single Unified Plan PC per Participant)
 
-The proof of concept should be merged only after its dependency/build model and the media packet path are understood. It should not yet claim production SFU behavior.
+### Work Package 2: Compression Binary Envelope (`EVK1`) & Codec Scaffolding
+- [x] Implement binary envelope encoder/decoder: `EVoiceKit.Compression.Envelope` (`lib/e_voice_kit/compression/envelope.ex`)
+- [x] Add unit tests for 28-byte header validation, magic matching, payload bounding, and error handling (`test/e_voice_kit/compression/envelope_test.exs`)
+- [ ] Implement bounded algorithm wrappers: `EVoiceKit.Compression.Codecs.{None, Gzip, Brotli, Zstd}`
+- [ ] Implement decompression bomb guardrails and memory expansion ratio checks
+- [ ] Add compression microbenchmark suite
+
+### Work Package 3: ExWebRTC 0.18 Proof of Concept & Dependency Validation
+- [ ] Add ExWebRTC `~> 0.18.0` dependency evaluation in isolated test harness
+- [ ] Validate native NIF compilation and build dependencies (`ex_dtls`, `ex_ice`, `ex_libsrtp`, `ex_rtp`, `ex_sdp`)
+- [ ] Establish one browser-to-Elixir PeerConnection with SDP offer/answer exchange
+- [ ] Receive browser Opus RTP track and emit telemetry/packet events
+- [ ] Verify ExSCTP optional dependency and Rust toolchain requirements for DataChannels
+
+### Work Package 4: Native WebSocket Signaling & Session Bootstrap
+- [ ] Add WebSocket signaling route in `EVoiceKit.Endpoint` (e.g. `/rtc/v1`)
+- [ ] Implement uncompressed `ClientHello` and `ServerHello` capability handshake
+- [ ] Implement directional compression negotiation state machine
+- [ ] Add one-time connection ticket verification and short-lived authentication
+
+### Work Package 5: Room & Participant Supervision Scaffolding
+- [ ] Create `EVoiceKit.Rooms.Registry` and `EVoiceKit.RoomDynamicSupervisor`
+- [ ] Implement `EVoiceKit.Rooms.RoomCoordinator` with isolated control-plane responsibilities
+- [ ] Implement `EVoiceKit.Participants.ParticipantSession` and `EVoiceKit.RTC.PeerConnectionOwner`
+- [ ] Implement idempotent room join/leave and track publish/unpublish lifecycle
+
+### Work Package 6: Audio SFU Packet Forwarding Vertical Slice (Milestone 1)
+- [ ] Implement `EVoiceKit.SFU.Router` and UpTrack/DownTrack state mapping
+- [ ] Forward Opus RTP packets from Publisher A to Subscriber B with sequence/PT remapping
+- [ ] Verify live two-way browser audio playout without external SFU
+- [ ] Add network impairment and abnormal disconnect teardown tests
 
 ---
 
@@ -1328,17 +1384,18 @@ The proof of concept should be merged only after its dependency/build model and 
 
 ## 21. Approval checklist
 
-Before implementation begins, approve or amend these project-level choices:
+Project-level architectural baselines approved for active implementation on branch `feat/elixir-realtime-server`:
 
-- [ ] The product is a native Elixir SFU/real-time media server, not a LiveKit integration.
-- [ ] Existing telephony and AI-provider functionality must remain available during migration.
-- [ ] The first milestone is browser-to-browser audio through the Elixir SFU.
-- [ ] ExWebRTC is the preferred foundation, subject to Phase 0 technical validation.
-- [ ] Brotli, gzip and Zstandard are negotiated by directional client/server capability intersection on every new signaling connection.
-- [ ] Compression is application-envelope compression for signaling/application data, not general-purpose RTP/SRTP compression.
-- [ ] none is mandatory fallback; limits, no-context-takeover and decompression safety are mandatory.
-- [ ] Native protocol versus unmodified LiveKit SDK compatibility is explicitly decided before the production protocol is frozen.
-- [ ] SIP stack choice is gated on research and integration testing.
-- [ ] No production code changes are included in this documentation-only commit.
+- [x] The product is a native Elixir SFU/real-time media server, not a LiveKit integration ([ADR-0001](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0001-native-elixir-sfu-architecture-and-protocol.md)).
+- [x] Existing telephony and AI-provider functionality must remain available during migration without regression.
+- [x] The first milestone is browser-to-browser audio through the Elixir SFU (Milestone 1).
+- [x] ExWebRTC is the preferred foundation, subject to Phase 0 technical validation.
+- [x] Brotli, gzip and Zstandard are negotiated by directional client/server capability intersection on every new signaling connection ([ADR-0002](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0002-compression-binary-envelope-and-negotiation.md)).
+- [x] Compression is application-envelope compression for signaling/application data, not general-purpose RTP/SRTP compression.
+- [x] `NONE` is mandatory fallback; limits, no-context-takeover and decompression safety are mandatory.
+- [x] Native protocol versus unmodified LiveKit SDK compatibility is explicitly decided ([ADR-0001](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0001-native-elixir-sfu-architecture-and-protocol.md)): Native protocol is baseline; LiveKit SDK compatibility is an adapter.
+- [x] Single Unified Plan PeerConnection per participant approved for native mode ([ADR-0003](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0003-unified-plan-webrtc-topology.md)).
+- [x] SIP stack choice is gated on research and integration testing (NkSIP vs ersip vs custom).
+- [x] Active development branch `feat/elixir-realtime-server` created; work on Gate 0 / Phase 0 underway.
 
-**This plan is a researched proposal, not a claim that all listed capabilities already exist. The architecture, APIs, dependencies and versions must pass the specified proof-of-concept and compatibility gates before implementation.**
+**Execution Note:** Implementation proceeds incrementally through the 8 engineering gates defined in Section 17 and companion document [ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md) (Section 34). Each capability requires automated test evidence and operational metrics before being declared complete.
