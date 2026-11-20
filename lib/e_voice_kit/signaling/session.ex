@@ -184,15 +184,14 @@ defmodule EVoiceKit.Signaling.Session do
 
   defp dispatch_message(%__MODULE__{state: :negotiating} = state, :client_ready, payload, req_id) do
     case Negotiation.handle_client_ready(state.negotiation, payload) do
-      {:ok, updated_neg} ->
-        server_ready = %{
-          "type" => "server_ready",
-          "negotiation_id" => updated_neg.negotiation_id,
-          "session_id" => state.session_id,
-          "compression_active" => true,
-          "c2s" => to_string(updated_neg.chosen_c2s_algorithm),
-          "s2c" => to_string(updated_neg.chosen_s2c_algorithm)
-        }
+      {:ok, updated_neg, server_ready_payload} ->
+        server_ready =
+          Map.merge(server_ready_payload, %{
+            "session_id" => state.session_id,
+            "compression_active" => true,
+            "c2s" => to_string(updated_neg.chosen_c2s_algorithm),
+            "s2c" => to_string(updated_neg.chosen_s2c_algorithm)
+          })
 
         new_state = %{state | state: :signaling_ready, negotiation: updated_neg}
         {:ok, resp_bin} = encode_uncompressed(Protocol.msg_type(:server_ready), server_ready, req_id)
