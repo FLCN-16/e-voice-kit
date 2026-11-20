@@ -157,13 +157,14 @@ defmodule EVoiceKit.Signaling.Session do
 
   defp dispatch_message(%__MODULE__{state: :await_client_hello} = state, :client_hello, payload, req_id) do
     client_version = payload["protocol_version"] || 1
-    client_encs = payload["client_encoders"] || ["none"]
-    client_decs = payload["client_decoders"] || ["none"]
+    client_encs = payload["client_encoders"] || payload["encoders"] || ["none"]
+    client_decs = payload["client_decoders"] || payload["decoders"] || ["none"]
 
     case Negotiation.propose(state.negotiation, client_version, client_encs, client_decs) do
       {:ok, updated_neg} ->
         server_hello = %{
           "type" => "server_hello",
+          "negotiation_id" => updated_neg.negotiation_id,
           "protocol_version" => updated_neg.protocol_version,
           "chosen_c2s_algorithm" => to_string(updated_neg.chosen_c2s_algorithm),
           "chosen_s2c_algorithm" => to_string(updated_neg.chosen_s2c_algorithm),
@@ -181,11 +182,12 @@ defmodule EVoiceKit.Signaling.Session do
     end
   end
 
-  defp dispatch_message(%__MODULE__{state: :negotiating} = state, :client_ready, _payload, req_id) do
-    case Negotiation.confirm(state.negotiation) do
+  defp dispatch_message(%__MODULE__{state: :negotiating} = state, :client_ready, payload, req_id) do
+    case Negotiation.handle_client_ready(state.negotiation, payload) do
       {:ok, updated_neg} ->
         server_ready = %{
           "type" => "server_ready",
+          "negotiation_id" => updated_neg.negotiation_id,
           "session_id" => state.session_id,
           "compression_active" => true,
           "c2s" => to_string(updated_neg.chosen_c2s_algorithm),
