@@ -215,7 +215,9 @@ defmodule EVoiceKit.Signaling.SessionTest do
       }
 
       {:ok, bin} = Envelope.encode(illegal_env)
-      assert {:error, :compressed_frame_before_negotiation_active} = Session.handle_frame(session, bin)
+      assert {:error, :compressed_frame_before_negotiation_active, [error_bin]} = Session.handle_frame(session, bin)
+      assert {:ok, error_env} = Envelope.decode(error_bin)
+      assert error_env.message_type == Protocol.msg_type(:error)
     end
   end
 end
