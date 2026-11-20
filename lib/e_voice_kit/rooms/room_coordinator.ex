@@ -218,13 +218,12 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
 
         # Register UpTrack in room's SFU Router
         if is_pid(state.router_pid) do
-          up_track = %UpTrack{
-            track_sid: track_sid,
-            publisher_sid: participant_sid,
-            kind: kind_atom,
-            source_ssrc: Map.get(track_params, :ssrc, 0),
-            source_pt: Map.get(track_params, :payload_type, 111)
-          }
+          up_track =
+            UpTrack.new(track_sid, participant_sid,
+              kind: kind_atom,
+              ssrc: Map.get(track_params, :ssrc, 0),
+              payload_type: Map.get(track_params, :payload_type, 111)
+            )
 
           Router.register_up_track(state.router_pid, up_track)
         end
