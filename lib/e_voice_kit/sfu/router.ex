@@ -124,18 +124,18 @@ defmodule EVoiceKit.SFU.Router do
 
   @impl true
   def handle_call({:subscribe, subscriber_sid, track_sid, sink_pid, opts}, _from, state) do
-    down_sid = Keyword.get(opts, :down_track_sid, track_sid)
     dest_ssrc = Keyword.get(opts, :destination_ssrc, :rand.uniform(4_000_000_000))
     dest_pt = Keyword.get(opts, :destination_pt, 111)
 
     down_track = %DownTrack{
-      down_track_sid: down_sid,
-      up_track_sid: track_sid,
       subscriber_sid: subscriber_sid,
+      track_sid: track_sid,
       sink_pid: sink_pid,
       destination_ssrc: dest_ssrc,
       destination_pt: dest_pt,
-      enabled: true
+      seq_offset: Keyword.get(opts, :seq_offset, 0),
+      ts_offset: Keyword.get(opts, :ts_offset, 0),
+      active: true
     }
 
     current_track_subs = Map.get(state.subscriptions, track_sid, %{})
@@ -188,7 +188,7 @@ defmodule EVoiceKit.SFU.Router do
 
   defp dispatch_to_subscribers(subs, packet) when is_map(subs) do
     for {_sub_sid, down_track} <- subs do
-      if down_track.enabled and is_pid(down_track.sink_pid) do
+      if down_track.active and is_pid(down_track.sink_pid) do
         # Check subscriber queue depth to isolate slow subscribers
         case Process.info(down_track.sink_pid, :message_queue_len) do
           {:message_queue_len, len} when len > @max_subscriber_queue_len ->
@@ -197,7 +197,7 @@ defmodule EVoiceKit.SFU.Router do
 
           _ ->
             remapped = PacketMapper.remap_packet(packet, down_track)
-            send(down_track.sink_pid, {:forwarded_rtp, down_track.down_track_sid, remapped})
+            send(down_track.sink_pid, {:forwarded_rtp, down_track.track_sid, remapped})
         end
       end
     end
