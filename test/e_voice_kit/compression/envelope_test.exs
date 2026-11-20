@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Compression.EnvelopeTest do
+defmodule EVoiceKit.Compression.EnvelopeTest do
   use ExUnit.Case, async: true
 
   alias EVoiceKit.Compression.Envelope

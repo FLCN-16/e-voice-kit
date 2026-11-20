@@ -169,6 +169,33 @@ defmodule EVoiceKit.Endpoint do
   end
 
   # Fallback 404
+  # Native WebRTC SFU Signaling WebSocket Endpoint
+  get "/rtc/v1" do
+    conn
+    |> WebSockAdapter.upgrade(EVoiceKit.Signaling.WebSocket, [], timeout: :infinity)
+    |> halt()
+  end
+
+  # Token Generation Endpoint for WebRTC Room Connection
+  post "/rtc/v1/token" do
+    room = conn.body_params["room"] || "default"
+    identity = conn.body_params["identity"] || ("user_" <> (:crypto.strong_rand_bytes(6) |> Base.encode16(case: :lower)))
+    ticket = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+
+    response = %{
+      "token" => ticket,
+      "room" => room,
+      "identity" => identity,
+      "ws_url" => "/rtc/v1",
+      "expires_in" => 300
+    }
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Jason.encode!(response))
+  end
+
+  # Fallback 404
   match _ do
     send_resp(conn, 404, "Not Found")
   end

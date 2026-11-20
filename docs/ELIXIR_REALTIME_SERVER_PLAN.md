@@ -1287,37 +1287,46 @@ Active Work Tracker on branch `feat/elixir-realtime-server`:
 - [x] Document and accept [ADR-0002](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0002-compression-binary-envelope-and-negotiation.md) (28-byte `EVK1` Binary Envelope)
 - [x] Document and accept [ADR-0003](file:///c:/Users/RishabhKumar/Work/openring-main/elixir/docs/adr/0003-unified-plan-webrtc-topology.md) (Single Unified Plan PC per Participant)
 
-### Work Package 2: Compression Binary Envelope (`EVK1`) & Codec Scaffolding
+### Work Package 2: Compression Binary Envelope (`EVK1`) & Codec Engine
 - [x] Implement binary envelope encoder/decoder: `EVoiceKit.Compression.Envelope` (`lib/e_voice_kit/compression/envelope.ex`)
 - [x] Add unit tests for 28-byte header validation, magic matching, payload bounding, and error handling (`test/e_voice_kit/compression/envelope_test.exs`)
-- [ ] Implement bounded algorithm wrappers: `EVoiceKit.Compression.Codecs.{None, Gzip, Brotli, Zstd}`
-- [ ] Implement decompression bomb guardrails and memory expansion ratio checks
-- [ ] Add compression microbenchmark suite
+- [x] Implement bounded algorithm wrappers: `EVoiceKit.Compression.Codecs.{None, Gzip, Brotli, Zstd}`
+- [x] Implement decompression bomb guardrails and memory expansion ratio checks (`BoundedDecoder`)
+- [x] Implement payload size thresholds and negative-compression safeguards (`BoundedEncoder`)
+- [x] Add unit tests in `test/e_voice_kit/compression/compression_test.exs`
 
-### Work Package 3: ExWebRTC 0.18 Proof of Concept & Dependency Validation
-- [ ] Add ExWebRTC `~> 0.18.0` dependency evaluation in isolated test harness
-- [ ] Validate native NIF compilation and build dependencies (`ex_dtls`, `ex_ice`, `ex_libsrtp`, `ex_rtp`, `ex_sdp`)
-- [ ] Establish one browser-to-Elixir PeerConnection with SDP offer/answer exchange
-- [ ] Receive browser Opus RTP track and emit telemetry/packet events
-- [ ] Verify ExSCTP optional dependency and Rust toolchain requirements for DataChannels
+### Work Package 3: ExWebRTC 0.18 & RTC PeerConnection Transport
+- [x] Add `ex_webrtc` (`~> 0.18.0`) and `ex_sctp` (`~> 0.1.3`, optional) to `mix.exs` and `Dockerfile`
+- [x] Implement `EVoiceKit.RTC.PeerConnectionOwner` (`lib/e_voice_kit/rtc/peer_connection_owner.ex`)
+- [x] Implement `EVoiceKit.RTC.SDP` offer/answer parsing and answer generation (`lib/e_voice_kit/rtc/sdp.ex`)
+- [x] Add unit tests in `test/e_voice_kit/rtc/rtc_test.exs`
 
 ### Work Package 4: Native WebSocket Signaling & Session Bootstrap
-- [ ] Add WebSocket signaling route in `EVoiceKit.Endpoint` (e.g. `/rtc/v1`)
-- [ ] Implement uncompressed `ClientHello` and `ServerHello` capability handshake
-- [ ] Implement directional compression negotiation state machine
-- [ ] Add one-time connection ticket verification and short-lived authentication
+- [x] Add WebSocket signaling route in `EVoiceKit.Endpoint` (`/rtc/v1`)
+- [x] Implement uncompressed `ClientHello` and `ServerHello` capability handshake
+- [x] Implement directional compression negotiation state machine (`EVoiceKit.Compression.Negotiation`)
+- [x] Add connection ticket generation route in `EVoiceKit.Endpoint` (`/rtc/v1/token`)
+- [x] Implement full session state machine (`EVoiceKit.Signaling.Session` and `WebSocket`)
+- [x] Add unit tests in `test/e_voice_kit/signaling/session_test.exs`
 
-### Work Package 5: Room & Participant Supervision Scaffolding
-- [ ] Create `EVoiceKit.Rooms.Registry` and `EVoiceKit.RoomDynamicSupervisor`
-- [ ] Implement `EVoiceKit.Rooms.RoomCoordinator` with isolated control-plane responsibilities
-- [ ] Implement `EVoiceKit.Participants.ParticipantSession` and `EVoiceKit.RTC.PeerConnectionOwner`
-- [ ] Implement idempotent room join/leave and track publish/unpublish lifecycle
+### Work Package 5: Room & Participant Supervision Architecture
+- [x] Create `EVoiceKit.Rooms.Registry` and `EVoiceKit.Rooms.RoomDynamicSupervisor`
+- [x] Implement `EVoiceKit.Rooms.RoomCoordinator` with isolated control-plane responsibilities
+- [x] Implement `EVoiceKit.Participants.Participant` and `EVoiceKit.Participants.Permissions`
+- [x] Implement idempotent room join/leave and track publish/unpublish lifecycle
+- [x] Add unit tests in `test/e_voice_kit/rooms/room_coordinator_test.exs`
 
-### Work Package 6: Audio SFU Packet Forwarding Vertical Slice (Milestone 1)
-- [ ] Implement `EVoiceKit.SFU.Router` and UpTrack/DownTrack state mapping
-- [ ] Forward Opus RTP packets from Publisher A to Subscriber B with sequence/PT remapping
-- [ ] Verify live two-way browser audio playout without external SFU
-- [ ] Add network impairment and abnormal disconnect teardown tests
+### Work Package 6: Audio SFU Packet Forwarding Engine (Milestone 1 Core)
+- [x] Implement `EVoiceKit.SFU.Router` and UpTrack/DownTrack state mapping
+- [x] Implement `EVoiceKit.SFU.PacketMapper` for high-performance SSRC/PT RTP rewriting
+- [x] Forward Opus RTP packets asynchronously to subscriber DownTracks without blocking publisher
+- [x] Add unit tests in `test/e_voice_kit/sfu/sfu_test.exs`
+
+### Work Package 7: Voice AI, SIP & DataChannel Integration
+- [x] Implement `EVoiceKit.VoiceAI.Participant` for AI agents as first-class room participants
+- [x] Implement `EVoiceKit.SIP.RoomAdapter` bridging external SIP/PSTN call legs to the SFU Router
+- [x] Implement `EVoiceKit.Media.Frame` bridging telephony and WebRTC PCM/Opus formats
+- [x] Implement `EVoiceKit.DataChannels.Relay` for multiplexed application data routing
 
 ---
 

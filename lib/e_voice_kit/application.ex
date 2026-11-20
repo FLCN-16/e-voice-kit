@@ -12,6 +12,10 @@ defmodule EVoiceKit.Application do
       # Unique registry for active call sessions
       {Registry, keys: :unique, name: EVoiceKit.SessionRegistry},
 
+      # Native WebRTC SFU Room Registry & Dynamic Supervisor
+      EVoiceKit.Rooms.Registry,
+      EVoiceKit.Rooms.RoomDynamicSupervisor,
+
       # HTTP Client with connection pooling for outbound API requests
       {Finch, name: EVoiceKit.Finch},
 

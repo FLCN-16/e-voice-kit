@@ -1,4 +1,4 @@
-﻿defmodule EVoiceKit.Compression.Envelope do
+defmodule EVoiceKit.Compression.Envelope do
   @moduledoc """
   Fixed 28-byte binary framing protocol (`EVK1`) for E-Voice-Kit native real-time signaling.
 
