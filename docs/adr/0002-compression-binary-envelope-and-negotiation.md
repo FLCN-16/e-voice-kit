@@ -1,4 +1,4 @@
-﻿# ADR-0002: 28-Byte Binary Envelope & Directional Compression Negotiation
+# ADR-0002: 28-Byte Binary Envelope & Directional Compression Negotiation
 
 ## Status
 **ACCEPTED** (2026-11-20)

@@ -1,4 +1,4 @@
-﻿# ADR-0001: Native E-Voice Protocol & SFU Architecture Baseline
+# ADR-0001: Native E-Voice Protocol & SFU Architecture Baseline
 
 ## Status
 **ACCEPTED** (2026-11-20)

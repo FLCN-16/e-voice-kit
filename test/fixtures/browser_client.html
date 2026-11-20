@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>E-Voice-Kit Native SFU Client Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e2e; color: #cdd6f4; }
+    button { background: #89b4fa; color: #11111b; border: none; padding: 8px 16px; font-weight: bold; cursor: pointer; border-radius: 4px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log { background: #11111b; border: 1px solid #313244; padding: 10px; height: 350px; overflow-y: scroll; margin-top: 15px; border-radius: 4px; }
+    .success { color: #a6e3a1; }
+    .info { color: #89b4fa; }
+    .error { color: #f38ba8; }
+  </style>
+</head>
+<body>
+  <h2>E-Voice-Kit Native SFU Test Client</h2>
+  <div>
+    <label>Room: <input id="room" value="demo_room" style="padding: 6px;"></label>
+    <label>Identity: <input id="identity" value="browser_user" style="padding: 6px;"></label>
+    <button id="btnConnect" onclick="connect()">Connect & Join</button>
+    <button id="btnPublish" onclick="publishAudio()" disabled>Publish Mic</button>
+    <button id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+  </div>
+  <div id="log"></div>
+
+  <script>
+    let ws = null;
+    let pc = null;
+    let localStream = null;
+    let negotiationId = null;
+
+    function log(msg, cls = "info") {
+      const el = document.getElementById("log");
+      const d = document.createElement("div");
+      d.className = cls;
+      d.textContent = `[${new Date().toISOString().substring(11, 19)}] ${msg}`;
+      el.appendChild(d);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // 28-Byte Binary Envelope (EVK1) Encoder
+    function encodeEnvelope(msgType, jsonPayload, reqId = 0) {
+      const payloadBytes = new TextEncoder().encode(JSON.stringify(jsonPayload));
+      const header = new Uint8Array(28);
+      const view = new DataView(header.buffer);
+
+      // Magic 'EVK1'
+      header[0] = 0x45; header[1] = 0x56; header[2] = 0x4B; header[3] = 0x31;
+      view.setUint8(4, 1);    // Version 1
+      view.setUint8(5, 0);    // Flags: uncompressed
+      view.setUint8(6, 0);    // Algorithm: NONE (0)
+      view.setUint8(7, 28);   // Header len: 28
+      view.setUint16(8, msgType); // Message Type
+      view.setUint16(10, 0);  // Reserved
+      view.setUint32(12, payloadBytes.length); // Wire Length
+      view.setUint32(16, payloadBytes.length); // Plain Length
+      view.setBigUint64(20, BigInt(reqId));   // Request ID
+
+      const packet = new Uint8Array(28 + payloadBytes.length);
+      packet.set(header, 0);
+      packet.set(payloadBytes, 28);
+      return packet;
+    }
+
+    // 28-Byte Binary Envelope (EVK1) Decoder
+    function decodeEnvelope(buffer) {
+      const view = new DataView(buffer);
+      const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+      if (magic !== "EVK1") throw new Error("Invalid magic: " + magic);
+
+      const msgType = view.getUint16(8);
+      const wireLen = view.getUint32(12);
+      const reqId = Number(view.getBigUint64(20));
+      const payloadBytes = new Uint8Array(buffer, 28, wireLen);
+      const json = JSON.parse(new TextDecoder().decode(payloadBytes));
+      return { msgType, json, reqId };
+    }
+
+    async function connect() {
+      const room = document.getElementById("room").value;
+      const identity = document.getElementById("identity").value;
+
+      log(`Requesting connection ticket for room '${room}'...`);
+      const tokenResp = await fetch("/rtc/v1/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room, identity })
+      });
+      const tokenData = await tokenResp.json();
+      log(`Ticket granted: ${tokenData.token}`);
+
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${proto}//${window.location.host}${tokenData.ws_url}`;
+      log(`Opening signaling WebSocket: ${wsUrl}...`);
+
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        log("WebSocket connected. Sending uncompressed ClientHello...", "success");
+        const clientHello = {
+          type: "client_hello",
+          protocol_version: "1.0",
+          encoders: ["none"],
+          decoders: ["none"]
+        };
+        ws.send(encodeEnvelope(1, clientHello, 1));
+      };
+
+      ws.onmessage = async (e) => {
+        const { msgType, json } = decodeEnvelope(e.data);
+        log(`Received msgType ${msgType}: ${JSON.stringify(json)}`);
+
+        if (msgType === 2) { // ServerHello
+          negotiationId = json.negotiation_id;
+          log(`Capabilities negotiated (ID: ${negotiationId}). Sending ClientReady...`, "success");
+          ws.send(encodeEnvelope(3, { type: "client_ready", negotiation_id: negotiationId }, 2));
+        } else if (msgType === 4) { // ServerReady
+          log("Signaling active. Joining room...", "success");
+          ws.send(encodeEnvelope(10, { type: "join_room", room, identity }, 3));
+        } else if (msgType === 11) { // JoinRoomResponse
+          log(`Joined room '${json.room}' as participant '${json.participant_id}'!`, "success");
+          document.getElementById("btnPublish").disabled = false;
+          document.getElementById("btnDisconnect").disabled = false;
+          document.getElementById("btnConnect").disabled = true;
+        } else if (msgType === 21) { // SdpAnswer
+          if (pc && pc.signalingState === "have-local-offer") {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: json.sdp }));
+            log("Remote SDP answer applied. WebRTC connected!", "success");
+          }
+        }
+      };
+
+      ws.onerror = (err) => log("WebSocket error: " + err, "error");
+      ws.onclose = () => {
+        log("WebSocket closed.", "error");
+        document.getElementById("btnPublish").disabled = true;
+        document.getElementById("btnDisconnect").disabled = true;
+        document.getElementById("btnConnect").disabled = false;
+      };
+    }
+
+    async function publishAudio() {
+      try {
+        log("Accessing microphone...");
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        pc = new RTCPeerConnection();
+
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        log("Sending SDP offer to server...");
+        ws.send(encodeEnvelope(20, { type: "sdp_offer", sdp: offer.sdp }, 4));
+
+        ws.send(encodeEnvelope(30, { type: "publish_track", kind: "audio", source: "microphone" }, 5));
+      } catch (err) {
+        log("Publish audio failed: " + err.message, "error");
+      }
+    }
+
+    function disconnect() {
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (pc) pc.close();
+      if (ws) ws.close();
+      log("Disconnected.");
+    }
+  </script>
+</body>
+</html>

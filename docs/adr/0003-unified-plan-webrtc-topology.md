@@ -1,4 +1,4 @@
-﻿# ADR-0003: Single Unified Plan PeerConnection per Participant
+# ADR-0003: Single Unified Plan PeerConnection per Participant
 
 ## Status
 **ACCEPTED** (2026-11-20)
