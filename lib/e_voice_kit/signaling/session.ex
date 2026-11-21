@@ -208,61 +208,88 @@ defmodule EVoiceKit.Signaling.Session do
        when state_name in [:signaling_ready, :connected] do
     token_str = payload["token"] || state.initial_token
 
-    # Verify cryptographic token
     case Token.verify(token_str) do
       {:ok, claims} ->
-        room_name = claims["room"] || payload["room"] || "default"
-        identity = claims["identity"] || payload["identity"] || generate_id("user_")
-        permissions = claims["permissions"] || state.permissions
+        tenant_id = claims["tenant_id"]
+        room_name = claims["room"]
+        identity = claims["identity"]
+        permissions = claims["permissions"]
 
-        # Ensure RoomCoordinator is started
-        room_coord_pid = get_or_start_room(room_name)
-        router_pid = if is_pid(room_coord_pid), do: RoomCoordinator.get_router(room_coord_pid), else: nil
+        valid_claims =
+          Enum.all?([tenant_id, room_name, identity], &(is_binary(&1) and byte_size(&1) > 0)) and
+            is_map(permissions) and
+            Enum.all?(["can_publish", "can_subscribe", "can_publish_data"], fn key ->
+              is_boolean(Map.get(permissions, key))
+            end)
 
-        # Start dedicated ExWebRTC PeerConnectionOwner
-        {:ok, pc_pid} =
-          PeerConnectionOwner.start_link(
-            participant_sid: identity,
-            router_pid: router_pid,
-            session_pid: self()
-          )
+        if not valid_claims do
+          reject_join(state, req_id, :invalid_claims)
+        else
+          room_coord_pid = get_or_start_room(tenant_id, room_name)
 
-        # Join participant into RoomCoordinator
-        participant_sid =
-          case RoomCoordinator.join_participant(room_coord_pid, identity, session_pid: self(), permissions: permissions) do
-            {:ok, participant} -> participant.participant_sid
-            _ -> identity
+          if not is_pid(room_coord_pid) do
+            reject_join(state, req_id, :room_unavailable)
+          else
+            case RoomCoordinator.join_participant(
+                   room_coord_pid,
+                   identity,
+                   session_pid: self(),
+                   permissions: permissions
+                 ) do
+              {:ok, participant} ->
+                router_pid = RoomCoordinator.get_router(room_coord_pid)
+
+                case PeerConnectionOwner.start_link(
+                       participant_sid: participant.participant_sid,
+                       router_pid: router_pid,
+                       session_pid: self()
+                     ) do
+                  {:ok, pc_pid} ->
+                    new_state = %{
+                      state
+                      | state: :connected,
+                        room_id: {tenant_id, room_name},
+                        room_coordinator: room_coord_pid,
+                        participant_id: participant.participant_sid,
+                        peer_connection_pid: pc_pid,
+                        permissions: permissions,
+                        authenticated: true
+                    }
+
+                    join_response = %{
+                      "type" => "join_room_response",
+                      "room" => room_name,
+                      "tenant_id" => tenant_id,
+                      "participant_id" => participant.participant_sid,
+                      "session_id" => state.session_id,
+                      "status" => "joined",
+                      "permissions" => permissions
+                    }
+
+                    {:ok, resp_bin} = encode_outbound(new_state, :join_room_response, join_response, req_id)
+                    {:reply, {:ok, [resp_bin]}, new_state}
+
+                  {:error, reason} ->
+                    RoomCoordinator.leave_participant(room_coord_pid, participant.participant_sid)
+                    reject_join(state, req_id, {:peer_connection_start_failed, reason})
+                end
+
+              {:error, reason} ->
+                reject_join(state, req_id, reason)
+            end
           end
-
-        new_state = %{
-          state
-          | state: :connected,
-            room_id: room_name,
-            room_coordinator: room_coord_pid,
-            participant_id: participant_sid,
-            peer_connection_pid: pc_pid,
-            permissions: permissions,
-            authenticated: true
-        }
-
-        join_response = %{
-          "type" => "join_room_response",
-          "room" => room_name,
-          "participant_id" => participant_sid,
-          "session_id" => state.session_id,
-          "status" => "joined",
-          "permissions" => permissions
-        }
-
-        {:ok, resp_bin} = encode_outbound(new_state, :join_room_response, join_response, req_id)
-        {:reply, {:ok, [resp_bin]}, new_state}
+        end
 
       {:error, reason} ->
         Logger.warning("Join rejected in session #{state.session_id}: unauthorized (#{inspect(reason)})")
-        err = Protocol.build_error(:unauthorized, "Authentication failed: #{inspect(reason)}", req_id)
-        {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
-        {:reply, {:error, :unauthorized, [err_bin]}, state}
+        reject_join(state, req_id, :unauthorized)
     end
+  end
+
+  defp reject_join(state, req_id, reason) do
+    err = Protocol.build_error(:unauthorized, "Room admission rejected: #{inspect(reason)}", req_id)
+    {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+    {:reply, {:error, :unauthorized, [err_bin]}, state}
   end
 
   defp dispatch_message(%__MODULE__{state: :connected} = state, :ping, payload, req_id) do
@@ -275,24 +302,19 @@ defmodule EVoiceKit.Signaling.Session do
   defp dispatch_message(%__MODULE__{state: :connected} = state, :sdp_offer, payload, req_id) do
     sdp = payload["sdp"] || ""
 
-    answer_sdp =
-      if is_pid(state.peer_connection_pid) do
-        case PeerConnectionOwner.apply_offer(state.peer_connection_pid, sdp) do
-          {:ok, answer} -> answer
-          _ -> "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
-        end
-      else
-        "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
-      end
+    case if(is_pid(state.peer_connection_pid),
+           do: PeerConnectionOwner.apply_offer(state.peer_connection_pid, sdp),
+           else: {:error, :peer_connection_unavailable}) do
+      {:ok, answer_sdp} ->
+        sdp_answer = %{"type" => "sdp_answer", "sdp" => answer_sdp, "offer_received" => true}
+        {:ok, resp_bin} = encode_outbound(state, :sdp_answer, sdp_answer, req_id)
+        {:reply, {:ok, [resp_bin]}, state}
 
-    sdp_answer = %{
-      "type" => "sdp_answer",
-      "sdp" => answer_sdp,
-      "offer_received" => byte_size(sdp) > 0
-    }
-
-    {:ok, resp_bin} = encode_outbound(state, :sdp_answer, sdp_answer, req_id)
-    {:reply, {:ok, [resp_bin]}, state}
+      {:error, reason} ->
+        err = Protocol.build_error(:negotiation_failed, "SDP negotiation failed: #{inspect(reason)}", req_id)
+        {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+        {:reply, {:error, :negotiation_failed, [err_bin]}, state}
+    end
   end
 
   # Remote Trickle ICE Candidate from client -> apply to PeerConnectionOwner
@@ -306,7 +328,7 @@ defmodule EVoiceKit.Signaling.Session do
 
   # Publish Track
   defp dispatch_message(%__MODULE__{state: :connected} = state, :publish_track, payload, req_id) do
-    if state.permissions["can_publish"] == true do
+    if state.permissions["can_publish"] == true and is_pid(state.room_coordinator) do
       track_params = %{
         kind: payload["kind"] || "audio",
         source: payload["source"] || "microphone",
@@ -314,25 +336,22 @@ defmodule EVoiceKit.Signaling.Session do
         ssrc: payload["ssrc"] || 0
       }
 
-      track_sid =
-        if is_pid(state.room_coordinator) do
-          case RoomCoordinator.publish_track(state.room_coordinator, state.participant_id, track_params) do
-            {:ok, sid} -> sid
-            _ -> generate_id("TR_")
-          end
-        else
-          generate_id("TR_")
-        end
+      case RoomCoordinator.publish_track(state.room_coordinator, state.participant_id, track_params) do
+        {:ok, track_sid} ->
+          track_published = %{
+            "type" => "track_published",
+            "track_sid" => track_sid,
+            "kind" => track_params.kind,
+            "source" => track_params.source
+          }
+          {:ok, resp_bin} = encode_outbound(state, :track_published, track_published, req_id)
+          {:reply, {:ok, [resp_bin]}, state}
 
-      track_published = %{
-        "type" => "track_published",
-        "track_sid" => track_sid,
-        "kind" => track_params.kind,
-        "source" => track_params.source
-      }
-
-      {:ok, resp_bin} = encode_outbound(state, :track_published, track_published, req_id)
-      {:reply, {:ok, [resp_bin]}, state}
+        {:error, reason} ->
+          err = Protocol.build_error(:internal_error, "Track publication failed: #{inspect(reason)}", req_id)
+          {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+          {:reply, {:error, reason, [err_bin]}, state}
+      end
     else
       err = Protocol.build_error(:permission_denied, "Publish permission denied", req_id)
       {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
@@ -344,29 +363,38 @@ defmodule EVoiceKit.Signaling.Session do
   defp dispatch_message(%__MODULE__{state: :connected} = state, :subscribe_track, payload, req_id) do
     track_sid = payload["track_sid"]
 
-    if state.permissions["can_subscribe"] == true and is_binary(track_sid) do
-      if is_pid(state.room_coordinator) and is_pid(state.peer_connection_pid) do
-        RoomCoordinator.subscribe_track(
-          state.room_coordinator,
-          state.participant_id,
-          track_sid,
-          state.peer_connection_pid
-        )
-      end
+    cond do
+      state.permissions["can_subscribe"] != true ->
+        subscription_error(state, req_id, :permission_denied)
 
-      track_subscribed = %{
-        "type" => "track_subscribed",
-        "track_sid" => track_sid,
-        "status" => "subscribed"
-      }
+      not is_binary(track_sid) ->
+        subscription_error(state, req_id, :invalid_track_sid)
 
-      {:ok, resp_bin} = encode_outbound(state, :track_subscribed, track_subscribed, req_id)
-      {:reply, {:ok, [resp_bin]}, state}
-    else
-      err = Protocol.build_error(:permission_denied, "Subscribe permission denied", req_id)
-      {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
-      {:reply, {:error, :permission_denied, [err_bin]}, state}
+      not is_pid(state.room_coordinator) or not is_pid(state.peer_connection_pid) ->
+        subscription_error(state, req_id, :room_unavailable)
+
+      true ->
+        case RoomCoordinator.subscribe_track(
+               state.room_coordinator,
+               state.participant_id,
+               track_sid,
+               state.peer_connection_pid
+             ) do
+          {:ok, _down_track} ->
+            response = %{"type" => "track_subscribed", "track_sid" => track_sid, "status" => "subscribed"}
+            {:ok, resp_bin} = encode_outbound(state, :track_subscribed, response, req_id)
+            {:reply, {:ok, [resp_bin]}, state}
+
+          {:error, reason} ->
+            subscription_error(state, req_id, reason)
+        end
     end
+  end
+
+  defp subscription_error(state, req_id, reason) do
+    err = Protocol.build_error(:permission_denied, "Subscription rejected: #{inspect(reason)}", req_id)
+    {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+    {:reply, {:error, reason, [err_bin]}, state}
   end
 
   defp dispatch_message(%__MODULE__{state: :connected} = state, :leave_room, _payload, req_id) do
@@ -450,13 +478,13 @@ defmodule EVoiceKit.Signaling.Session do
     Envelope.encode(env)
   end
 
-  defp get_or_start_room(room_name) do
-    case Registry.lookup(room_name) do
+  defp get_or_start_room(tenant_id, room_name) do
+    case Registry.lookup(tenant_id, room_name) do
       {:ok, pid} ->
         pid
 
       _ ->
-        case RoomDynamicSupervisor.start_room(room_name) do
+        case RoomDynamicSupervisor.start_room(room_name, tenant_id: tenant_id) do
           {:ok, pid} -> pid
           {:error, {:already_started, pid}} -> pid
           _ -> nil
