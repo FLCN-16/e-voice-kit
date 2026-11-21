@@ -9,7 +9,6 @@ defmodule EVoiceKit.Auth.Token do
   require Logger
 
   @default_ttl_seconds 3600
-  @default_secret "evk_default_development_secret_change_in_production"
 
   @doc """
   Generates a signed JWT token for a participant joining a room.
@@ -19,6 +18,14 @@ defmodule EVoiceKit.Auth.Token do
     secret = Keyword.get(opts, :secret, get_secret())
     ttl = Keyword.get(opts, :ttl, @default_ttl_seconds)
     now = System.system_time(:second)
+
+    with :ok <- validate_secret(secret),
+         :ok <- validate_ttl(ttl) do
+      generate_token(claims, secret, ttl, now)
+    end
+  end
+
+  defp generate_token(claims, secret, ttl, now) do
 
     default_claims = %{
       "tenant_id" => "default",
@@ -61,6 +68,12 @@ defmodule EVoiceKit.Auth.Token do
     secret = Keyword.get(opts, :secret, get_secret())
     now = Keyword.get(opts, :current_time, System.system_time(:second))
 
+    with :ok <- validate_secret(secret) do
+      verify_token(token, secret, now)
+    end
+  end
+
+  defp verify_token(token, secret, now) do
     case String.split(token, ".") do
       [encoded_header, encoded_payload, encoded_sig] ->
         signing_input = encoded_header <> "." <> encoded_payload
@@ -92,9 +105,20 @@ defmodule EVoiceKit.Auth.Token do
   Retrieves the configured secret from application environment or OS environment.
   """
   def get_secret do
-    System.get_env("EVK_AUTH_SECRET") ||
-      Application.get_env(:e_voice_kit, :auth_secret, @default_secret)
+    System.get_env("EVK_AUTH_SECRET") || Application.get_env(:e_voice_kit, :auth_secret)
   end
+
+  defp validate_secret(secret) when is_binary(secret) and byte_size(secret) >= 32 do
+    if secret == "evk_default_development_secret_change_in_production",
+      do: {:error, :insecure_auth_secret},
+      else: :ok
+  end
+
+  defp validate_secret(nil), do: {:error, :missing_auth_secret}
+  defp validate_secret(_), do: {:error, :weak_auth_secret}
+
+  defp validate_ttl(ttl) when is_integer(ttl) and ttl > 0 and ttl <= 86_400, do: :ok
+  defp validate_ttl(_), do: {:error, :invalid_ttl}
 
   # --- Helpers ---
 
