@@ -6,8 +6,6 @@ defmodule EVoiceKit.Auth.Token do
   expiration timestamps, and role-based permissions (can_publish, can_subscribe, can_publish_data).
   """
 
-  require Logger
-
   @default_ttl_seconds 3600
 
   @doc """
