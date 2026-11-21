@@ -26,6 +26,21 @@ defmodule EVoiceKit.Rooms.RoomCoordinatorTest do
       assert "bob" in identities
     end
 
+    test "rejects untrusted track kinds without creating atoms", %{coordinator: coord} do
+      {:ok, participant} = RoomCoordinator.join_participant(coord, "publisher")
+      before = :erlang.system_info(:atom_count)
+      kind = "untrusted-kind-#{System.unique_integer()}"
+      assert {:error, :unsupported_track_kind} =
+               RoomCoordinator.publish_track(coord, participant.participant_sid, %{kind: kind})
+      assert :erlang.system_info(:atom_count) == before
+    end
+
+    test "rejects subscriptions to missing tracks", %{coordinator: coord} do
+      {:ok, participant} = RoomCoordinator.join_participant(coord, "subscriber")
+      assert {:error, :track_not_found} =
+               RoomCoordinator.subscribe_track(coord, participant.participant_sid, "missing-track", self())
+    end
+
     test "handles join idempotency", %{coordinator: coord} do
       assert {:ok, alice1} = RoomCoordinator.join_participant(coord, "alice")
       assert {:ok, alice2} = RoomCoordinator.join_participant(coord, "alice")
@@ -69,7 +84,8 @@ defmodule EVoiceKit.Rooms.RoomCoordinatorTest do
 
     test "supports child_spec and dynamic supervisor invocation" do
       room_name = "dyn_room_#{:crypto.strong_rand_bytes(4) |> Base.encode16()}"
-      assert %{id: {RoomCoordinator, ^room_name}} = RoomCoordinator.child_spec({room_name, []})
+      assert %{id: {RoomCoordinator, key}} = RoomCoordinator.child_spec({room_name, []})
+      assert is_binary(key)
       assert {:ok, pid} = RoomCoordinator.start_link({room_name, [max_participants: 5]})
       assert is_pid(pid)
       assert is_pid(RoomCoordinator.get_router(pid))
