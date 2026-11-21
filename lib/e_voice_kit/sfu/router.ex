@@ -87,7 +87,7 @@ defmodule EVoiceKit.SFU.Router do
       [] -> {:ok, %{}}
     end
   rescue
-    _ -> :fallback_cast
+    _ -> {:ok, %{}}
   end
 
   def get_subscriptions(router_pid, track_sid) when is_pid(router_pid) do
