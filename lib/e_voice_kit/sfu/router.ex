@@ -49,6 +49,9 @@ defmodule EVoiceKit.SFU.Router do
     GenServer.call(router, {:subscribe, subscriber_sid, track_sid, sink_pid, opts})
   end
 
+  @doc "Returns the route table used by the media fast path."
+  def route_table(router), do: GenServer.call(router, :route_table)
+
   @doc """
   Removes a subscriber DownTrack.
   """
@@ -170,6 +173,11 @@ defmodule EVoiceKit.SFU.Router do
   @impl true
   def handle_call(:get_all_subscriptions, _from, state) do
     {:reply, state.subscriptions, state}
+  end
+
+  @impl true
+  def handle_call(:route_table, _from, state) do
+    {:reply, state.table, state}
   end
 
   @impl true
