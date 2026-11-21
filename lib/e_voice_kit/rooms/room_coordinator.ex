@@ -212,7 +212,6 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
         kind_atom =
           case to_string(kind_str) do
             "audio" -> :audio
-            "video" -> :video
             _ -> nil
           end
 
