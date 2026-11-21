@@ -54,6 +54,8 @@ defmodule EVoiceKit.Auth.TokenTest do
       assert {:error, :insecure_auth_secret} =
                Token.generate(claims, secret: "evk_default_development_secret_change_in_production")
       assert {:error, :missing_auth_secret} = Token.verify("a.b.c", secret: nil)
+      assert {:ok, non_expiring} = Token.generate(%{"exp" => nil})
+      assert {:error, :missing_expiration} = Token.verify(non_expiring)
     end
 
     test "rejects malformed token strings" do
