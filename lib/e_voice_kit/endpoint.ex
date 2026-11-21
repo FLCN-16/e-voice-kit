@@ -182,7 +182,7 @@ defmodule EVoiceKit.Endpoint do
   # to browser/mobile clients; end users receive short-lived tokens from their backend.
   post "/rtc/v1/token" do
     configured_issuer_key = System.get_env("EVK_TOKEN_ISSUER_KEY")
-    [provided_issuer_key] = Plug.Conn.get_req_header(conn, "x-evk-issuer-key") ++ [nil]
+    provided_issuer_key = Plug.Conn.get_req_header(conn, "x-evk-issuer-key") |> List.first()
 
     authorized =
       is_binary(configured_issuer_key) and byte_size(configured_issuer_key) >= 32 and
