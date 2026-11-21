@@ -44,8 +44,8 @@ defmodule EVoiceKit.Auth.TokenTest do
       now = System.system_time(:second)
 
       # Create token that expired 10 seconds ago
-      assert {:ok, token} = Token.generate(claims, ttl: -10)
-      assert {:error, :token_expired} = Token.verify(token, current_time: now)
+      assert {:ok, token} = Token.generate(claims, ttl: 1)
+      assert {:error, :token_expired} = Token.verify(token, current_time: now + 2)
     end
 
     test "refuses missing, weak, and known development secrets" do
