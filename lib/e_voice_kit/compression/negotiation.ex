@@ -9,7 +9,7 @@ defmodule EVoiceKit.Compression.Negotiation do
   See `docs/ELIXIR_REALTIME_SERVER_TECHNICAL_DESIGN.md` (Section 9) and `docs/adr/0002-compression-binary-envelope-and-negotiation.md`.
   """
 
-  alias EVoiceKit.Compression.Codecs.{Brotli, Gzip, None, Zstd}
+  alias EVoiceKit.Compression.Codecs.{Gzip, None}
 
   # Server priority order for algorithm selection
   @default_server_priority [:zstd, :brotli, :gzip, :none]
