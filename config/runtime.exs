@@ -1,11 +1,21 @@
 import Config
 
+if config_env() == :prod do
+  auth_secret = System.get_env("EVK_AUTH_SECRET")
+
+  if not (is_binary(auth_secret) and byte_size(auth_secret) >= 32 and
+            auth_secret != "evk_default_development_secret_change_in_production") do
+    raise "EVK_AUTH_SECRET must be configured with at least 32 characters in production"
+  end
+end
+
 if config_env() == :prod or System.get_env("PORT") do
   port = String.to_integer(System.get_env("PORT") || "4000")
   config :e_voice_kit, port: port
 end
 
 app_config = [
+  auth_secret: System.get_env("EVK_AUTH_SECRET"),
   # 1. Pipeline Defaults
   default_stt_provider: String.to_atom(System.get_env("DEFAULT_STT_PROVIDER", "deepgram")),
   default_tts_provider: String.to_atom(System.get_env("DEFAULT_TTS_PROVIDER", "elevenlabs")),
