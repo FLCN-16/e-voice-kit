@@ -107,7 +107,7 @@ defmodule EVoiceKit.SFU.Router do
 
   @impl true
   def init(_opts) do
-    table = :ets.new(:sfu_router_routes, [:set, :public, read_concurrency: true])
+    table = :ets.new(:sfu_router_routes, [:set, :protected, read_concurrency: true])
     {:ok, %__MODULE__{table: table, up_tracks: %{}, subscriptions: %{}}}
   end
 
