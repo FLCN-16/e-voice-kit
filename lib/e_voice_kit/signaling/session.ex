@@ -125,7 +125,7 @@ defmodule EVoiceKit.Signaling.Session do
   @impl true
   def handle_info({:local_ice_candidate, cand_map}, state) do
     if state.state == :connected and is_pid(state.transport_pid) do
-      case encode_outbound(state, :ice_candidate, cand_map, 0) do
+      case encode_outbound(state, :trickle_ice, cand_map, 0) do
         {:ok, binary} ->
           send(state.transport_pid, {:push_message, binary})
 
@@ -318,7 +318,7 @@ defmodule EVoiceKit.Signaling.Session do
   end
 
   # Remote Trickle ICE Candidate from client -> apply to PeerConnectionOwner
-  defp dispatch_message(%__MODULE__{state: :connected} = state, :ice_candidate, payload, _req_id) do
+  defp dispatch_message(%__MODULE__{state: :connected} = state, :trickle_ice, payload, _req_id) do
     if is_pid(state.peer_connection_pid) do
       PeerConnectionOwner.add_ice_candidate(state.peer_connection_pid, payload)
     end
