@@ -134,9 +134,11 @@ defmodule EVoiceKit.Signaling.SessionTest do
       }
 
       {:ok, offer_binary} = Envelope.encode(offer_env)
-      assert {:ok, [answer_bin]} = Session.handle_frame(session, offer_binary)
-      assert {:ok, answer_env} = Envelope.decode(answer_bin)
-      assert answer_env.message_type == Protocol.msg_type(:sdp_answer)
+      # The deliberately incomplete SDP fixture must fail negotiation rather than
+      # receiving a synthetic SDP answer that falsely reports a usable connection.
+      assert {:error, :negotiation_failed, [error_bin]} = Session.handle_frame(session, offer_binary)
+      assert {:ok, error_env} = Envelope.decode(error_bin)
+      assert error_env.message_type == Protocol.msg_type(:error)
 
       # 6. Publish Track
       pub_req = %{"type" => "publish_track", "kind" => "audio", "source" => "microphone"}
