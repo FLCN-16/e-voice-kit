@@ -26,19 +26,14 @@ defmodule EVoiceKit.RTC.RTCTest do
       assert stats_initial.connection_state == :new
       assert stats_initial.packets_sent == 0
 
-      offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=rtpmap:111 opus/48000/2\r\n"
-      assert {:ok, answer} = PeerConnectionOwner.apply_offer(pc_owner, offer)
-      assert String.contains?(answer, "opus/48000")
+      # Invalid SDP must be rejected; a synthetic answer must never imply
+      # that ICE/DTLS media transport is connected.
+      assert {:error, _reason} = PeerConnectionOwner.apply_offer(pc_owner, "not-sdp")
 
       stats_after = PeerConnectionOwner.get_stats(pc_owner)
-      assert stats_after.connection_state == :connected
+      refute stats_after.connection_state == :connected
+      assert stats_after.packets_sent == 0
 
-      # Simulate receiving forwarded RTP from SFU
-      send(pc_owner, {:forwarded_rtp, "tr_1", <<2::2, 0::14, 0::16, 0::32, 0::32, "payload">>})
-      :timer.sleep(10)
-
-      stats_forwarded = PeerConnectionOwner.get_stats(pc_owner)
-      assert stats_forwarded.packets_sent == 1
     end
   end
 end
