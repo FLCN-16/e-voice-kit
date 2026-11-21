@@ -318,12 +318,18 @@ defmodule EVoiceKit.Signaling.Session do
   end
 
   # Remote Trickle ICE Candidate from client -> apply to PeerConnectionOwner
-  defp dispatch_message(%__MODULE__{state: :connected} = state, :trickle_ice, payload, _req_id) do
-    if is_pid(state.peer_connection_pid) do
-      PeerConnectionOwner.add_ice_candidate(state.peer_connection_pid, payload)
-    end
+  defp dispatch_message(%__MODULE__{state: :connected} = state, :trickle_ice, payload, req_id) do
+    case if(is_pid(state.peer_connection_pid),
+           do: PeerConnectionOwner.add_ice_candidate(state.peer_connection_pid, payload),
+           else: {:error, :peer_connection_unavailable}) do
+      :ok ->
+        {:reply, {:ok, []}, state}
 
-    {:reply, {:ok, []}, state}
+      {:error, reason} ->
+        err = Protocol.build_error(:sdp_rejected, "ICE candidate rejected: #{inspect(reason)}", req_id)
+        {:ok, err_bin} = encode_outbound(state, :error, err, req_id)
+        {:reply, {:error, reason, [err_bin]}, state}
+    end
   end
 
   # Publish Track
