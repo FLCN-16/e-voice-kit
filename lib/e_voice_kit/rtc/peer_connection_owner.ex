@@ -47,16 +47,20 @@ defmodule EVoiceKit.RTC.PeerConnectionOwner do
     route_table = if is_pid(router_pid), do: Router.route_table(router_pid), else: nil
     {pc, outgoing_track_ids} = start_peer_connection_if_available(opts)
 
-    {:ok,
-     %__MODULE__{
-       pc_id: Keyword.get(opts, :pc_id, generate_id("PC_")),
-       participant_sid: Keyword.get(opts, :participant_sid, "anonymous"),
-       router_pid: router_pid,
-       route_table: route_table,
-       session_pid: Keyword.get(opts, :session_pid),
-       pc: pc,
-       outgoing_track_ids: outgoing_track_ids
-     }}
+    if is_nil(pc) do
+      {:stop, :peer_connection_unavailable}
+    else
+      {:ok,
+       %__MODULE__{
+         pc_id: Keyword.get(opts, :pc_id, generate_id("PC_")),
+         participant_sid: Keyword.get(opts, :participant_sid, "anonymous"),
+         router_pid: router_pid,
+         route_table: route_table,
+         session_pid: Keyword.get(opts, :session_pid),
+         pc: pc,
+         outgoing_track_ids: outgoing_track_ids
+       }}
+    end
   end
 
   @impl true
