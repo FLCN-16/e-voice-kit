@@ -96,14 +96,18 @@ defmodule EVoiceKit.Signaling.Protocol do
 
   # Getters for error codes
   def error_code(:auth_failed), do: @err_auth_failed
+  def error_code(:unauthorized), do: @err_auth_failed
   def error_code(:room_not_found), do: @err_room_not_found
   def error_code(:room_full), do: @err_room_full
   def error_code(:duplicate_participant), do: @err_duplicate_participant
   def error_code(:track_not_found), do: @err_track_not_found
   def error_code(:permission_denied), do: @err_permission_denied
+  def error_code(:track_not_found), do: @err_track_not_found
   def error_code(:compression_mismatch), do: @err_compression_mismatch
   def error_code(:malformed_frame), do: @err_malformed_frame
   def error_code(:sdp_rejected), do: @err_sdp_rejected
+  def error_code(:negotiation_failed), do: @err_sdp_rejected
+  def error_code(:frame_decode_error), do: @err_malformed_frame
   def error_code(:internal_error), do: @err_internal_error
   def error_code(_), do: @err_internal_error
 
