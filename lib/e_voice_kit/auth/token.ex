@@ -62,7 +62,9 @@ defmodule EVoiceKit.Auth.Token do
   Returns `{:ok, claims}` on success or `{:error, reason}` on failure.
   """
   @spec verify(String.t(), keyword()) :: {:ok, map()} | {:error, atom() | {atom(), term()}}
-  def verify(token, opts \\ []) when is_binary(token) do
+  def verify(token, opts \\ [])
+
+  def verify(token, opts) when is_binary(token) do
     secret = Keyword.get(opts, :secret, get_secret())
     now = Keyword.get(opts, :current_time, System.system_time(:second))
 
@@ -70,6 +72,8 @@ defmodule EVoiceKit.Auth.Token do
       verify_token(token, secret, now)
     end
   end
+
+  def verify(_non_binary, _opts), do: {:error, :invalid_token_type}
 
   defp verify_token(token, secret, now) do
     case String.split(token, ".") do
@@ -99,8 +103,6 @@ defmodule EVoiceKit.Auth.Token do
   rescue
     _ -> {:error, :invalid_token}
   end
-
-  def verify(_non_binary, _opts), do: {:error, :invalid_token_type}
 
   @doc """
   Retrieves the configured secret from application environment or OS environment.
