@@ -59,6 +59,10 @@ defmodule EVoiceKit.SFU.Router do
     GenServer.call(router, {:unsubscribe, subscriber_sid, track_sid})
   end
 
+  def unsubscribe_all(router, subscriber_sid) do
+    GenServer.call(router, {:unsubscribe_all, subscriber_sid})
+  end
+
   @doc """
   Fast-path packet forwarding: fans out an RTP packet to all active subscribers of the track.
   Dispatches asynchronously without blocking the caller. If the router has an ETS table,
@@ -162,6 +166,18 @@ defmodule EVoiceKit.SFU.Router do
         if state.table, do: :ets.insert(state.table, {track_sid, updated_track_subs})
         {:reply, :ok, %{state | subscriptions: new_subs}}
     end
+  end
+
+  @impl true
+  def handle_call({:unsubscribe_all, subscriber_sid}, _from, state) do
+    updated =
+      Enum.reduce(state.subscriptions, %{}, fn {track_sid, subs}, acc ->
+        remaining = Map.delete(subs, subscriber_sid)
+        if state.table, do: :ets.insert(state.table, {track_sid, remaining})
+        Map.put(acc, track_sid, remaining)
+      end)
+
+    {:reply, :ok, %{state | subscriptions: updated}}
   end
 
   @impl true
