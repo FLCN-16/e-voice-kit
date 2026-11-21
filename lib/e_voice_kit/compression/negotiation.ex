@@ -226,12 +226,9 @@ defmodule EVoiceKit.Compression.Negotiation do
   defp to_algo_atom(_), do: nil
 
   defp available_server_codecs do
-    [
-      {None, :none},
-      {Gzip, :gzip},
-      {Brotli, :brotli},
-      {Zstd, :zstd}
-    ]
+    # Only advertise codecs whose decoder enforces an output cap during decompression.
+    # Brotli/Zstd remain unavailable until bounded streaming APIs are verified.
+    [{None, :none}, {Gzip, :gzip}]
     |> Enum.filter(fn {mod, _name} -> mod.available?() end)
     |> Enum.map(fn {_mod, name} -> name end)
   end
