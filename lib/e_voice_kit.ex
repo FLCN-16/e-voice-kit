@@ -46,4 +46,32 @@ defmodule EVoiceKit do
   def reconfigure_call(call_id, new_config) do
     EVoiceKit.Pipeline.Session.reconfigure(call_id, new_config)
   end
+
+  # --- Real-Time SFU & Room Management ---
+
+  @doc """
+  Starts or retrieves an active WebRTC room coordinator.
+  """
+  def start_room(room_name, opts \\ []) do
+    case EVoiceKit.Rooms.RoomDynamicSupervisor.start_room(room_name, opts) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, pid}} -> {:ok, pid}
+      err -> err
+    end
+  end
+
+  @doc """
+  Looks up an active room coordinator by room name.
+  """
+  def get_room(room_name) do
+    EVoiceKit.Rooms.Registry.lookup(room_name)
+  end
+
+  @doc """
+  Returns the count of active room coordinators under dynamic supervision.
+  """
+  def active_rooms_count do
+    DynamicSupervisor.which_children(EVoiceKit.Rooms.RoomDynamicSupervisor)
+    |> length()
+  end
 end

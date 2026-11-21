@@ -3,7 +3,7 @@
 # ==========================================
 FROM hexpm/elixir:1.16.2-erlang-26.2.3-alpine-3.19.1 AS build
 
-RUN apk add --no-cache build-base git
+RUN apk add --no-cache bash build-base git rust cargo pkgconf openssl-dev libsrtp-dev
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ RUN mix release
 # ==========================================
 FROM alpine:3.19.1 AS app
 
-RUN apk add --no-cache libstdc++ ncurses-libs openssl
+RUN apk add --no-cache libstdc++ ncurses-libs openssl libsrtp
 
 WORKDIR /app
 

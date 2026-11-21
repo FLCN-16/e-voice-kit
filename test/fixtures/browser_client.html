@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>E-Voice-Kit WebRTC SFU Test Client</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #0f172a; color: #f8fafc; }
+    h1 { color: #38bdf8; font-size: 24px; border-bottom: 1px solid #334155; padding-bottom: 12px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 13px; color: #94a3b8; }
+    input { width: 100%; padding: 8px 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #fff; margin-bottom: 16px; box-sizing: border-box; }
+    button { background: #0284c7; color: white; border: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; cursor: pointer; margin-right: 8px; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log { background: #020617; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; height: 260px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+    .log-entry { margin-bottom: 4px; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+    .info { color: #38bdf8; }
+    audio { width: 100%; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>E-Voice-Kit WebRTC SFU Test Client</h1>
+  
+  <div class="card">
+    <label for="room">Room Name</label>
+    <input id="room" value="test-room" />
+    
+    <label for="identity">Participant Identity</label>
+    <input id="identity" value="browser-client-1" />
+    
+    <div>
+      <button id="btnConnect" onclick="connect()">1. Authenticate & Connect</button>
+      <button id="btnPublish" onclick="publishAudio()" disabled>2. Publish Microphone</button>
+      <button id="btnDisconnect" onclick="disconnect()" disabled>Disconnect</button>
+    </div>
+
+    <label style="margin-top: 16px;">Remote Forwarded Audio Output</label>
+    <audio id="remoteAudio" autoplay controls></audio>
+  </div>
+
+  <div class="card">
+    <label>Signaling & Media Logs</label>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    let ws = null;
+    let pc = null;
+    let localStream = null;
+    let authToken = null;
+
+    function log(msg, type = "info") {
+      const el = document.getElementById("log");
+      const entry = document.createElement("div");
+      entry.className = "log-entry " + type;
+      entry.textContent = `[${new Date().toISOString().substring(11, 23)}] ${msg}`;
+      el.appendChild(entry);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    // 28-Byte Binary Envelope (EVK1) Encoder
+    function encodeEnvelope(msgType, jsonPayload, reqId = 0) {
+      const payloadBytes = new TextEncoder().encode(JSON.stringify(jsonPayload));
+      const header = new Uint8Array(28);
+      const view = new DataView(header.buffer);
+
+      // Magic 'EVK1'
+      header[0] = 0x45; header[1] = 0x56; header[2] = 0x4B; header[3] = 0x31;
+      view.setUint8(4, 1);    // Version 1
+      view.setUint8(5, 0);    // Flags: uncompressed
+      view.setUint8(6, 0);    // Algorithm: NONE (0)
+      view.setUint8(7, 28);   // Header len: 28
+      view.setUint16(8, msgType); // Message Type
+      view.setUint16(10, 0);  // Reserved
+      view.setUint32(12, payloadBytes.length); // Wire Length
+      view.setUint32(16, payloadBytes.length); // Plain Length
+      view.setBigUint64(20, BigInt(reqId));   // Request ID
+
+      const packet = new Uint8Array(28 + payloadBytes.length);
+      packet.set(header, 0);
+      packet.set(payloadBytes, 28);
+      return packet;
+    }
+
+    // 28-Byte Binary Envelope (EVK1) Decoder
+    function decodeEnvelope(buffer) {
+      const view = new DataView(buffer);
+      const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+      if (magic !== "EVK1") throw new Error("Invalid magic: " + magic);
+
+      const msgType = view.getUint16(8);
+      const wireLen = view.getUint32(12);
+      const reqId = Number(view.getBigUint64(20));
+      const payloadBytes = new Uint8Array(buffer, 28, wireLen);
+      const json = JSON.parse(new TextDecoder().decode(payloadBytes));
+      return { msgType, json, reqId };
+    }
+
+    async function connect() {
+      const room = document.getElementById("room").value;
+      const identity = document.getElementById("identity").value;
+
+      log(`Requesting signed connection JWT token for room '${room}'...`);
+      const tokenResp = await fetch("/rtc/v1/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room, identity })
+      });
+      const tokenData = await tokenResp.json();
+      authToken = tokenData.token;
+      log(`Signed JWT token issued (expires in ${tokenData.expires_in}s)`, "success");
+
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${proto}//${window.location.host}${tokenData.ws_url}`;
+      log(`Connecting to WebSocket signaling: ${wsUrl}...`);
+
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
+
+      ws.onopen = () => {
+        log("WebSocket connected. Sending ClientHello with supported codecs...", "success");
+        const clientHello = {
+          type: "client_hello",
+          protocol_version: 1,
+          client_encoders: ["none", "gzip", "zstd", "brotli"],
+          client_decoders: ["none", "gzip", "zstd", "brotli"]
+        };
+        ws.send(encodeEnvelope(1, clientHello, 1));
+      };
+
+      ws.onmessage = async (e) => {
+        const { msgType, json } = decodeEnvelope(e.data);
+        log(`Received msgType ${msgType} (${json.type}): ${JSON.stringify(json)}`);
+
+        if (msgType === 2) { // ServerHello
+          log(`Directional codecs negotiated (C2S: ${json.chosen_c2s_algorithm}, S2C: ${json.chosen_s2c_algorithm}). Sending ClientReady...`, "success");
+          ws.send(encodeEnvelope(3, { type: "client_ready", session_id: json.session_id }, 2));
+        } else if (msgType === 4) { // ServerReady
+          log("Signaling ready. Joining room with authentication token...", "success");
+          ws.send(encodeEnvelope(10, { type: "join_room", room, identity, token: authToken }, 3));
+        } else if (msgType === 11) { // JoinRoomResponse
+          log(`Joined room '${json.room}' as participant '${json.participant_id}'!`, "success");
+          document.getElementById("btnPublish").disabled = false;
+          document.getElementById("btnDisconnect").disabled = false;
+          document.getElementById("btnConnect").disabled = true;
+        } else if (msgType === 21) { // SdpAnswer
+          if (pc && pc.signalingState === "have-local-offer") {
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: json.sdp }));
+            log("Remote SDP answer applied. WebRTC DTLS/SRTP connection established!", "success");
+          }
+        } else if (msgType === 22) { // Remote IceCandidate from server
+          if (pc && json.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate({
+              candidate: json.candidate,
+              sdpMid: json.sdpMid,
+              sdpMLineIndex: json.sdpMLineIndex
+            }));
+            log("Remote ICE candidate added.", "info");
+          }
+        }
+      };
+
+      ws.onerror = (err) => log("WebSocket error: " + err, "error");
+      ws.onclose = () => {
+        log("WebSocket closed.", "error");
+        document.getElementById("btnPublish").disabled = true;
+        document.getElementById("btnDisconnect").disabled = true;
+        document.getElementById("btnConnect").disabled = false;
+      };
+    }
+
+    async function publishAudio() {
+      try {
+        log("Accessing local microphone...");
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+
+        // Trickle ICE candidates to server
+        pc.onicecandidate = (event) => {
+          if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(encodeEnvelope(22, {
+              type: "ice_candidate",
+              candidate: event.candidate.candidate,
+              sdpMid: event.candidate.sdpMid,
+              sdpMLineIndex: event.candidate.sdpMLineIndex
+            }, 6));
+          }
+        };
+
+        // Play incoming remote audio from SFU
+        pc.ontrack = (event) => {
+          log("Remote media track received from SFU router!", "success");
+          const remoteAudio = document.getElementById("remoteAudio");
+          remoteAudio.srcObject = event.streams[0];
+          remoteAudio.play().catch(e => log("Autoplay blocked: " + e.message, "error"));
+        };
+
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        log("Sending SDP offer to SFU server...");
+        ws.send(encodeEnvelope(20, { type: "sdp_offer", sdp: offer.sdp }, 4));
+
+        ws.send(encodeEnvelope(30, { type: "publish_track", kind: "audio", source: "microphone" }, 5));
+      } catch (err) {
+        log("Publish audio failed: " + err.message, "error");
+      }
+    }
+
+    function disconnect() {
+      if (localStream) localStream.getTracks().forEach(t => t.stop());
+      if (pc) pc.close();
+      if (ws) ws.close();
+      log("Disconnected.");
+    }
+  </script>
+</body>
+</html>

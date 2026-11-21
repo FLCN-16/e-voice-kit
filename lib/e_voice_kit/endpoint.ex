@@ -169,6 +169,77 @@ defmodule EVoiceKit.Endpoint do
   end
 
   # Fallback 404
+  # Native WebRTC SFU Signaling WebSocket Endpoint
+  get "/rtc/v1" do
+    token = conn.query_params["token"]
+
+    conn
+    |> WebSockAdapter.upgrade(EVoiceKit.Signaling.WebSocket, [token: token], timeout: :infinity)
+    |> halt()
+  end
+
+  # Token issuance is a backend-only operation. The issuer key must never be shipped
+  # to browser/mobile clients; end users receive short-lived tokens from their backend.
+  post "/rtc/v1/token" do
+    configured_issuer_key = System.get_env("EVK_TOKEN_ISSUER_KEY")
+    provided_issuer_key = Plug.Conn.get_req_header(conn, "x-evk-issuer-key") |> List.first()
+
+    authorized =
+      is_binary(configured_issuer_key) and byte_size(configured_issuer_key) >= 32 and
+        is_binary(provided_issuer_key) and
+        Plug.Crypto.secure_compare(configured_issuer_key, provided_issuer_key)
+
+    params = conn.body_params
+    tenant_id = params["tenant_id"]
+    room = params["room"]
+    identity = params["identity"]
+    permissions = params["permissions"]
+    ttl = params["ttl"] || 3600
+
+    valid_request =
+      Enum.all?([tenant_id, room, identity], &(is_binary(&1) and byte_size(&1) in 1..256)) and
+        is_map(permissions) and
+        Enum.all?(["can_publish", "can_subscribe", "can_publish_data"], fn key ->
+          is_boolean(Map.get(permissions, key))
+        end) and is_integer(ttl) and ttl in 1..3600
+
+    cond do
+      not authorized ->
+        conn |> put_resp_content_type("application/json") |> send_resp(401, Jason.encode!(%{"error" => "issuer_unauthorized"}))
+
+      not valid_request ->
+        conn |> put_resp_content_type("application/json") |> send_resp(400, Jason.encode!(%{"error" => "invalid_token_request"}))
+
+      true ->
+        claims = %{
+          "tenant_id" => tenant_id,
+          "room" => room,
+          "identity" => identity,
+          "permissions" => permissions
+        }
+
+        case EVoiceKit.Auth.Token.generate(claims, ttl: ttl) do
+          {:ok, token} ->
+            response = %{
+              "token" => token,
+              "tenant_id" => tenant_id,
+              "room" => room,
+              "identity" => identity,
+              "permissions" => permissions,
+              "ws_url" => "/rtc/v1?token=" <> URI.encode_www_form(token),
+              "expires_in" => ttl
+            }
+
+            conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(response))
+
+          {:error, reason} ->
+            Logger.error("Token issuance failed: #{inspect(reason)}")
+            conn |> put_resp_content_type("application/json") |> send_resp(503, Jason.encode!(%{"error" => "token_issuer_unavailable"}))
+        end
+    end
+  end
+
+  # Fallback 404
   match _ do
     send_resp(conn, 404, "Not Found")
   end
