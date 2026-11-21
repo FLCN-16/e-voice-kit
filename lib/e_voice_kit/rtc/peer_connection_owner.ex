@@ -47,8 +47,9 @@ defmodule EVoiceKit.RTC.PeerConnectionOwner do
     route_table = if is_pid(router_pid), do: Router.route_table(router_pid), else: nil
     {pc, outgoing_track_ids} = start_peer_connection_if_available(opts)
 
-    if is_nil(pc) do
-      {:stop, :peer_connection_unavailable}
+    if is_nil(pc) or outgoing_track_ids == [] do
+      if is_pid(pc), do: apply(ExWebRTC.PeerConnection, :stop, [pc])
+      {:stop, :peer_connection_or_sender_unavailable}
     else
       {:ok,
        %__MODULE__{
