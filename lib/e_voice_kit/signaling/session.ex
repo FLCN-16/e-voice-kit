@@ -24,6 +24,7 @@ defmodule EVoiceKit.Signaling.Session do
     :participant_id,
     :peer_connection_pid,
     :permissions,
+    :subscribed_track_sid,
     state: :await_client_hello,
     negotiation: nil,
     authenticated: false,
@@ -383,6 +384,9 @@ defmodule EVoiceKit.Signaling.Session do
       not is_pid(state.room_coordinator) or not is_pid(state.peer_connection_pid) ->
         subscription_error(state, req_id, :room_unavailable)
 
+      not is_nil(state.subscribed_track_sid) and state.subscribed_track_sid != track_sid ->
+        subscription_error(state, req_id, :one_audio_track_per_peer_supported)
+
       true ->
         case RoomCoordinator.subscribe_track(
                state.room_coordinator,
@@ -393,7 +397,7 @@ defmodule EVoiceKit.Signaling.Session do
           {:ok, _down_track} ->
             response = %{"type" => "track_subscribed", "track_sid" => track_sid, "status" => "subscribed"}
             {:ok, resp_bin} = encode_outbound(state, :track_subscribed, response, req_id)
-            {:reply, {:ok, [resp_bin]}, state}
+            {:reply, {:ok, [resp_bin]}, %{state | subscribed_track_sid: track_sid}}
 
           {:error, reason} ->
             subscription_error(state, req_id, reason)
@@ -412,7 +416,7 @@ defmodule EVoiceKit.Signaling.Session do
       RoomCoordinator.leave_participant(state.room_coordinator, state.participant_id)
     end
 
-    new_state = %{state | state: :closed, room_id: nil, room_coordinator: nil}
+    new_state = %{state | state: :closed, room_id: nil, room_coordinator: nil, subscribed_track_sid: nil}
     resp = %{"type" => "left_room", "status" => "ok"}
     {:ok, resp_bin} = encode_outbound(new_state, :leave_room, resp, req_id)
     {:reply, {:ok, [resp_bin]}, new_state}
