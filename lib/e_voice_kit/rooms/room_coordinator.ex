@@ -336,6 +336,11 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
       {participant, new_participants} ->
         new_identities = Map.delete(state.identities, participant.identity)
 
+        # Remove this participant as a subscriber as well as a publisher.
+        if is_pid(state.router_pid) do
+          Router.unsubscribe_all(state.router_pid, participant_sid)
+        end
+
         # Demonitor references for this participant
         cleaned_monitors =
           Enum.reduce(state.monitors, %{}, fn {ref, sid}, acc ->
