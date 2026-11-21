@@ -239,8 +239,7 @@ defmodule EVoiceKit.RTC.PeerConnectionOwner do
     if Code.ensure_loaded?(ExWebRTC.PeerConnection) and
          function_exported?(ExWebRTC.PeerConnection, :start_link, 1) do
       pc_opts = [
-        ice_servers: Keyword.get(opts, :ice_servers, [%{urls: "stun:stun.l.google.com:19302"}]),
-        audio_codecs: [%{name: "opus", clock_rate: 48_000, channels: 2, payload_type: 111}]
+        ice_servers: Keyword.get(opts, :ice_servers, [%{urls: "stun:stun.l.google.com:19302"}])
       ]
 
       case apply(ExWebRTC.PeerConnection, :start_link, [pc_opts]) do
