@@ -338,6 +338,10 @@ defmodule EVoiceKit.Signaling.Session do
 
       case RoomCoordinator.publish_track(state.room_coordinator, state.participant_id, track_params) do
         {:ok, track_sid} ->
+          if is_pid(state.peer_connection_pid) do
+            PeerConnectionOwner.bind_published_track(state.peer_connection_pid, track_sid)
+          end
+
           track_published = %{
             "type" => "track_published",
             "track_sid" => track_sid,
