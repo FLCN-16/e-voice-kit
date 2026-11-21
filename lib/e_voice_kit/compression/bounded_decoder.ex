@@ -7,7 +7,7 @@ defmodule EVoiceKit.Compression.BoundedDecoder do
   """
 
   alias EVoiceKit.Compression.Envelope
-  alias EVoiceKit.Compression.Codecs.{Brotli, Gzip, None, Zstd}
+  alias EVoiceKit.Compression.Codecs.Gzip
 
   @default_max_plain_length 2 * 1024 * 1024
   @default_max_expansion_ratio 15.0
@@ -52,18 +52,11 @@ defmodule EVoiceKit.Compression.BoundedDecoder do
     end
   end
 
-  defp decompress_with_codec(:brotli, payload, declared_plain, opts) do
-    case Brotli.decompress(payload, opts) do
-      {:ok, decompressed} -> verify_length(decompressed, declared_plain)
-      err -> err
-    end
-  end
-
-  defp decompress_with_codec(:zstd, payload, declared_plain, opts) do
-    case Zstd.decompress(payload, opts) do
-      {:ok, decompressed} -> verify_length(decompressed, declared_plain)
-      err -> err
-    end
+  # The pinned Brotli and Zstandard NIF APIs expose whole-buffer decompression only.
+  # Reject them here rather than allocate unbounded output before checking its size.
+  defp decompress_with_codec(algo, _payload, _declared_plain, _opts)
+       when algo in [:brotli, :zstd] do
+    {:error, :bounded_decompression_unsupported}
   end
 
   defp decompress_with_codec(algo, _payload, _declared, _opts) do
