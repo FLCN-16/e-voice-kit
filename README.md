@@ -12,7 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 <p align="center">
-  A high-performance real-time media server and conversational Voice AI edge gateway built on the Erlang BEAM virtual machine. Combines a native Selective Forwarding Unit (SFU) with sub-50ms barge-in interruptions, directional application compression, WebRTC DataChannels, and carrier-grade telephony ingress.
+  A high-performance real-time media server and conversational Voice AI edge gateway built on the Erlang BEAM virtual machine. Provides an evolving native WebRTC/SFU foundation alongside the existing conversational Voice AI and telephony gateway.
 </p>
 
 </div>
@@ -23,13 +23,13 @@
 
 | Capability | Module Namespace | Status | Details |
 | :--- | :--- | :--- | :--- |
-| **WebRTC PeerConnection Media** | `EVoiceKit.RTC.PeerConnectionOwner` | **Active / Implemented** | Native ExWebRTC (0.18.0) Unified Plan, DTLS-SRTP, SDP offer/answer, trickle ICE |
+| **WebRTC PeerConnection Media** | `EVoiceKit.RTC.PeerConnectionOwner` | *Prototype / Audio-first* | ExWebRTC PeerConnection lifecycle and single-audio-track forwarding path; browser-to-browser interoperability is not yet certified |
 | **Binary Framing & Envelope** | `EVoiceKit.Compression.Envelope` | **Active / Implemented** | Fixed 28-byte `EVK1` header with endianness validation and message type routing |
-| **Streaming Bounded Decompression** | `EVoiceKit.Compression.BoundedDecoder` | **Active / Implemented** | Runtime output-capped `:zlib.safeInflate` preventing decompression bomb attacks |
-| **Directional Negotiation** | `EVoiceKit.Compression.Negotiation` | **Active / Implemented** | Asymmetric C2S & S2C codec negotiation (`Zstd`, `Brotli`, `Gzip`, `NONE`) |
-| **Cryptographic Authentication** | `EVoiceKit.Auth.Token` | **Active / Implemented** | HMAC-SHA256 signed JWT tokens with room, tenant, and permission grants |
-| **Supervised Rooms & Isolation** | `EVoiceKit.Rooms.RoomCoordinator` | **Active / Implemented** | DynamicSupervisor isolation, admission control, process monitoring |
-| **Concurrent SFU Track Router** | `EVoiceKit.SFU.Router` | **Active / Implemented** | Fast-path ETS route dispatching, SSRC/PT remapping, slow-subscriber isolation |
+| **Streaming Bounded Decompression** | `EVoiceKit.Compression.BoundedDecoder` | *Partial / Fail-closed* | Gzip uses runtime output caps; Brotli and Zstandard inbound decoding are disabled until bounded streaming APIs are verified |
+| **Directional Negotiation** | `EVoiceKit.Compression.Negotiation` | *Partial / Implemented* | Asymmetric C2S & S2C negotiation currently advertises only bounded `Gzip` and `NONE` |
+| **Cryptographic Authentication** | `EVoiceKit.Auth.Token` | **Implemented with deployment requirements** | HS256 JWT verification; production requires `EVK_AUTH_SECRET` and token issuance requires a trusted backend issuer key |
+| **Supervised Rooms & Isolation** | `EVoiceKit.Rooms.RoomCoordinator` | **Implemented** | Tenant-scoped room registry keys, admission control, and participant process monitoring |
+| **Concurrent SFU Track Router** | `EVoiceKit.SFU.Router` | *Prototype / Audio-first* | ETS read fast path, RTP header rewriting, and slow-subscriber isolation; currently one audio subscription per peer |
 | **WebRTC DataChannels** | `EVoiceKit.DataChannels.Relay` | *Phase 2 / Experimental* | Optional ExSCTP data relay architecture |
 | **SIP Trunk Room Ingress** | `EVoiceKit.SIP.RoomAdapter` | *Phase 2 / In Progress* | G.711 telephony bridge to WebRTC room tracks |
 | **Voice AI Room Agent** | `EVoiceKit.VoiceAI.Participant` | *Phase 2 / In Progress* | First-class AI participant subscribing and publishing in room |
