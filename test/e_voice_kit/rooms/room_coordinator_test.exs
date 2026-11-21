@@ -82,6 +82,19 @@ defmodule EVoiceKit.Rooms.RoomCoordinatorTest do
       assert length(RoomCoordinator.list_participants(coord)) == 0
     end
 
+    test "isolates identical room names across tenants" do
+      room_name = "shared-room-#{System.unique_integer([:positive])}"
+      {:ok, tenant_a_pid} = RoomCoordinator.start_link(room_name, tenant_id: "tenant-a")
+      {:ok, tenant_b_pid} = RoomCoordinator.start_link(room_name, tenant_id: "tenant-b")
+
+      assert {:ok, ^tenant_a_pid} = EVoiceKit.Rooms.Registry.lookup("tenant-a", room_name)
+      assert {:ok, ^tenant_b_pid} = EVoiceKit.Rooms.Registry.lookup("tenant-b", room_name)
+      refute tenant_a_pid == tenant_b_pid
+
+      GenServer.stop(tenant_a_pid)
+      GenServer.stop(tenant_b_pid)
+    end
+
     test "supports child_spec and dynamic supervisor invocation" do
       room_name = "dyn_room_#{:crypto.strong_rand_bytes(4) |> Base.encode16()}"
       assert %{id: {RoomCoordinator, key}} = RoomCoordinator.child_spec({room_name, []})
