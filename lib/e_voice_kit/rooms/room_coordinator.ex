@@ -210,8 +210,9 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
       participant ->
         kind_str = Map.get(track_params, :kind, "audio")
         kind_atom =
-          case to_string(kind_str) do
+          case kind_str do
             "audio" -> :audio
+            :audio -> :audio
             _ -> nil
           end
 
