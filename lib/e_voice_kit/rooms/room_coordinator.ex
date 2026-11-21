@@ -28,8 +28,11 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
   # --- Child Spec & Client API ---
 
   def child_spec({room_name, opts}) when is_binary(room_name) do
+    tenant_id = Keyword.get(opts, :tenant_id, "default")
+    key = Registry.room_key(tenant_id, room_name)
+
     %{
-      id: {__MODULE__, room_name},
+      id: {__MODULE__, key},
       start: {__MODULE__, :start_link, [{room_name, opts}]},
       restart: :transient
     }
@@ -44,7 +47,8 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
   end
 
   def start_link(room_name, opts \\ []) when is_binary(room_name) do
-    name = Keyword.get(opts, :name, Registry.via_tuple(room_name))
+    tenant_id = Keyword.get(opts, :tenant_id, "default")
+    name = Keyword.get(opts, :name, Registry.via_tuple(tenant_id, room_name))
     GenServer.start_link(__MODULE__, {room_name, opts}, name: name)
   end
 
@@ -204,20 +208,26 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
         {:reply, {:error, :participant_not_found}, state}
 
       participant ->
-        track_sid = generate_sid("TR_")
         kind_str = Map.get(track_params, :kind, "audio")
-        kind_atom = if is_atom(kind_str), do: kind_str, else: String.to_atom(to_string(kind_str))
+        kind_atom =
+          case to_string(kind_str) do
+            "audio" -> :audio
+            "video" -> :video
+            _ -> nil
+          end
 
-        track_info = %{
-          track_sid: track_sid,
-          publisher_sid: participant_sid,
-          kind: kind_str,
-          source: Map.get(track_params, :source, "microphone"),
-          muted: false
-        }
+        if is_nil(kind_atom) do
+          {:reply, {:error, :unsupported_track_kind}, state}
+        else
+          track_sid = generate_sid("TR_")
+          track_info = %{
+            track_sid: track_sid,
+            publisher_sid: participant_sid,
+            kind: Atom.to_string(kind_atom),
+            source: Map.get(track_params, :source, "microphone"),
+            muted: false
+          }
 
-        # Register UpTrack in room's SFU Router
-        if is_pid(state.router_pid) do
           up_track =
             UpTrack.new(track_sid, participant_sid,
               kind: kind_atom,
@@ -225,32 +235,39 @@ defmodule EVoiceKit.Rooms.RoomCoordinator do
               payload_type: Map.get(track_params, :payload_type, 111)
             )
 
-          Router.register_up_track(state.router_pid, up_track)
+          case Router.register_up_track(state.router_pid, up_track) do
+            :ok ->
+              updated_participant = %{participant | tracks: Map.put(participant.tracks, track_sid, track_info)}
+              new_state = %{
+                state
+                | participants: Map.put(state.participants, participant_sid, updated_participant),
+                  tracks: Map.put(state.tracks, track_sid, track_info)
+              }
+
+              Logger.info("Track published in #{state.room.name}: #{track_sid} by #{participant_sid}")
+              {:reply, {:ok, track_sid}, new_state}
+
+            {:error, reason} ->
+              {:reply, {:error, reason}, state}
+          end
         end
-
-        updated_participant = %{
-          participant
-          | tracks: Map.put(participant.tracks, track_sid, track_info)
-        }
-
-        new_state = %{
-          state
-          | participants: Map.put(state.participants, participant_sid, updated_participant),
-            tracks: Map.put(state.tracks, track_sid, track_info)
-        }
-
-        Logger.info("Track published in #{state.room.name}: #{track_sid} by #{participant_sid}")
-        {:reply, {:ok, track_sid}, new_state}
     end
   end
 
   @impl true
   def handle_call({:subscribe_track, subscriber_sid, track_sid, sink_pid, opts}, _from, state) do
-    if is_pid(state.router_pid) do
-      result = Router.subscribe(state.router_pid, subscriber_sid, track_sid, sink_pid, opts)
-      {:reply, result, state}
-    else
-      {:reply, {:error, :no_router_available}, state}
+    cond do
+      not Map.has_key?(state.participants, subscriber_sid) ->
+        {:reply, {:error, :subscriber_not_found}, state}
+
+      not Map.has_key?(state.tracks, track_sid) ->
+        {:reply, {:error, :track_not_found}, state}
+
+      not is_pid(sink_pid) or not Process.alive?(sink_pid) ->
+        {:reply, {:error, :invalid_subscriber_sink}, state}
+
+      true ->
+        {:reply, Router.subscribe(state.router_pid, subscriber_sid, track_sid, sink_pid, opts), state}
     end
   end
 
