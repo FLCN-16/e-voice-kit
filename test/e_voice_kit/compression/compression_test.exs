@@ -82,6 +82,20 @@ defmodule EVoiceKit.Compression.CompressionTest do
       assert decoded == large_payload
     end
 
+    test "rejects whole-buffer Brotli and Zstd decoding in bounded path" do
+      for algorithm <- [:brotli, :zstd] do
+        env = %EVoiceKit.Compression.Envelope{
+          message_type: 1,
+          compressed: true,
+          algorithm: algorithm,
+          plain_length: 16,
+          payload: <<1, 2, 3, 4>>
+        }
+
+        assert {:error, :bounded_decompression_unsupported} = BoundedDecoder.decode(env, [])
+      end
+    end
+
     test "safely handles decompression bomb / expansion ratio breach" do
       bomb_env = %EVoiceKit.Compression.Envelope{
         message_type: 1,
