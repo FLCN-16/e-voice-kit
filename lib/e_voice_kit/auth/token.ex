@@ -78,7 +78,10 @@ defmodule EVoiceKit.Auth.Token do
       [encoded_header, encoded_payload, encoded_sig] ->
         signing_input = encoded_header <> "." <> encoded_payload
 
-        with {:ok, expected_sig} <- {:ok, sign_hmac_sha256(signing_input, secret)},
+        with {:ok, header_json} <- base64_url_decode(encoded_header),
+             {:ok, header} <- Jason.decode(header_json),
+             true <- is_map(header) and header["alg"] == "HS256",
+             {:ok, expected_sig} <- {:ok, sign_hmac_sha256(signing_input, secret)},
              {:ok, provided_sig} <- base64_url_decode(encoded_sig),
              true <- secure_compare(expected_sig, provided_sig),
              {:ok, payload_json} <- base64_url_decode(encoded_payload),
@@ -140,7 +143,7 @@ defmodule EVoiceKit.Auth.Token do
     if exp >= now, do: :ok, else: {:error, :expired}
   end
 
-  defp validate_expiration(_claims, _now), do: :ok
+  defp validate_expiration(_claims, _now), do: {:error, :missing_expiration}
 
   defp base64_url_encode(binary) do
     binary
